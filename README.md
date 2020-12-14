@@ -1,5 +1,5 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project is developing, if you used this code in you research, please consider to cite the followings:
+* This project is developing, more details will be provided later, thanks for your attention. If you used this code in you research, please consider to cite the followings:
 
 		@misc{wsl4mis2020,
 		  title={{WSL4MIS}},
@@ -7,9 +7,7 @@
 		  howpublished={\url{https://github.com/Luoxd1996/WSL4MIS}},
 		  year={2020}
 		}
-* More details of code and data will be provided later, thanks for your attention.
-
-**Note**: pCE means partially cross-entropy, TV means total variation, label denotes supervised by mask, scribble represents just supervised by scribbles.
+		
 # Dataset
 * The ACDC dataset with mask annotations can be downloaded from: [ACDC](https://www.creatis.insa-lyon.fr/Challenge/acdc/databases.html)
 * The Scribble annotations of ACDC can be downloaded from: [Scribble](https://gvalvano.github.io/wss-multiscale-adversarial-attention-gates/data)
@@ -47,3 +45,13 @@ python test_2D_fully.py
 ```
 5. Training curves on the fold1
 ![](https://github.com/Luoxd1996/WSL4MIS/blob/main/imgs/fold1_curve.png) 
+**Note**: pCE means partially cross-entropy, TV means total variation, label denotes supervised by mask, scribble represents just supervised by scribbles.
+
+# Implemented methods
+* **pCE**
+* **pCE + TV**
+* **pCE + GatedCRFLoss**
+
+# Acknowledgement
+* The GatedCRFLoss is borrowed from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss).
+* The codebase is apadapted from our previous work [SSL4MIS](https://github.com/HiLab-git/SSL4MIS).
