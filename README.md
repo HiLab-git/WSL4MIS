@@ -9,7 +9,7 @@
 		  year={2020}
 		}
 * More details of code and data will be provided later, thanks for your attention.
-* Results (supervision is scribbles, the result based on the ACDC dataset, 80 patients for training and 20 patients for validation)
+* Results (the result based on the ACDC dataset, 80 patients for training and 20 patients for validation (fold1))
 ![](https://github.com/Luoxd1996/WSL4MIS/blob/main/imgs/fold1_curve.png) 
 
 **Note**: pCE means partially cross-entropy, TV means total variation, label denotes supervised by mask, scribble represents just supervised by scribbles.
