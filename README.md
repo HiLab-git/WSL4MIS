@@ -53,5 +53,5 @@ python test_2D_fully.py
 * **pCE + GatedCRFLoss**
 
 # Acknowledgement
-* The GatedCRFLoss is borrowed from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss).
+* The GatedCRFLoss s apadapted from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss) for medical image segmentation.
 * The codebase is apadapted from our previous work [SSL4MIS](https://github.com/HiLab-git/SSL4MIS).
