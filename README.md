@@ -50,6 +50,7 @@ python test_2D_fully.py
 # Implemented methods
 * **pCE**
 * **pCE + TV**
+* **pCE + Entropy Minimization**
 * **pCE + GatedCRFLoss**
 
 # Acknowledgement
