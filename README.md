@@ -1,6 +1,6 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
 * This project was originally developed for our previous works [WORD](https://arxiv.org/pdf/2111.02403.pdf). If you use this codebase in your research, please cite the following works:
-* 
+ 
 		@article{luo2021word,
 		  title={WORD: Revisiting Organs Segmentation in the Whole Abdominal Region},
 		  author={Luo, Xiangde and Liao, Wenjun and Xiao, Jianghong and Song, Tao and Zhang, Xiaofan and Li, Kang and Wang, Guotai and Zhang, Shaoting},
