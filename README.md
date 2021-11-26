@@ -7,7 +7,6 @@
 		  journal={arXiv preprint arXiv:2111.02403},
 		  year={2021}
 		}
-
 		@misc{wsl4mis2020,
 		  title={{WSL4MIS}},
 		  author={Luo, Xiangde},
