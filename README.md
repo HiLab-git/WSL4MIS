@@ -11,7 +11,7 @@
 		  title={{WSL4MIS}},
 		  author={Luo, Xiangde},
 		  howpublished={\url{https://github.com/Luoxd1996/WSL4MIS}},
-		  year={2020}
+		  year={2021}
 		}
 		
 # Dataset
@@ -58,7 +58,9 @@ python test_2D_fully.py
 * **pCE + TV**
 * **pCE + Entropy Minimization**
 * **pCE + GatedCRFLoss**
+* **pCE + Intensity Variance Minimization**
 
 # Acknowledgement
 * The GatedCRFLoss is adapted from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss) for medical image segmentation.
 * The codebase is adapted from our previous work [SSL4MIS](https://github.com/HiLab-git/SSL4MIS).
+* The WORD dataset will be presented at [WORD](https://github.com/HiLab-git/WORD).
