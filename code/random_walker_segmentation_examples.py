@@ -24,7 +24,8 @@ def show_example_acdc():
                              out_range=(-1, 1))
 
     # Run random walker algorithm
-    labels = random_walker(data, markers, beta=100, mode='bf')
+    segmentation = random_walker(data, markers, beta=100, mode='bf')
+    labels = segmentation - 1
     # Plot results
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(8, 3.2),
                                         sharex=True, sharey=True)
@@ -60,7 +61,8 @@ def show_example_protate():
                              out_range=(-1, 1))
 
     # Run random walker algorithm
-    labels = random_walker(data, markers, beta=100, mode='bf')
+    segmentation = random_walker(data, markers, beta=100, mode='bf')
+    labels = segmentation - 1
     # Plot results
     fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(8, 3.2),
                                         sharex=True, sharey=True)
