@@ -38,17 +38,17 @@ cd WSL4MIS
 ```
 2. Download and pre-process data and put the data in  `../data/ACDC`.
 
-3. Train the model
+3. Train the model (5-fold cross-validation):
 ```
 cd code
 python train_XXX_2D.py or bash train_ssl.sh or bash train_wss.sh
 ```
 
-4. Test the model
+4. Test the model:
 ```
 python test_2D_fully.py
 ```
-5. Training curves on the fold1
+5. Training curves on the fold1:
 ![](https://github.com/Luoxd1996/WSL4MIS/blob/main/imgs/fold1_curve.png) 
 **Note**: pCE means partially cross-entropy, TV means total variation, label denotes supervised by mask, scribble represents just supervised by scribbles.
 
