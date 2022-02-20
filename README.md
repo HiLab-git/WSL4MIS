@@ -62,7 +62,7 @@ python test_2D_fully.py
 * [**pCE + MumfordShah_Loss**](https://arxiv.org/pdf/1904.02872.pdf)
 * [**Scribble2Label**](https://arxiv.org/pdf/2006.12890.pdf)
 * [**USTM**](https://www.sciencedirect.com/science/article/pii/S0031320321005215)
-* 
+
 # Acknowledgement
 * The GatedCRFLoss is adapted from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss) for medical image segmentation.
 * The codebase is adapted from our previous work [SSL4MIS](https://github.com/HiLab-git/SSL4MIS).
