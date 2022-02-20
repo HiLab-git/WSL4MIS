@@ -79,6 +79,7 @@ class FCDiscriminator(nn.Module):
     def forward(self, map, feature):
         map_feature = self.conv0(map)
         image_feature = self.conv1(feature)
+
         x = torch.add(map_feature, image_feature)
 
         x = self.conv2(x)

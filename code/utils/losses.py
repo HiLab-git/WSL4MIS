@@ -1,8 +1,8 @@
-import torch
-from torch.nn import functional as F
 import numpy as np
+import torch
 import torch.nn as nn
 from torch.autograd import Variable
+from torch.nn import functional as F
 
 
 def dice_loss(score, target):
@@ -192,6 +192,46 @@ class DiceLoss(nn.Module):
         return loss / self.n_classes
 
 
+class pDLoss(nn.Module):
+    def __init__(self, n_classes, ignore_index):
+        super(pDLoss, self).__init__()
+        self.n_classes = n_classes
+        self.ignore_index = ignore_index
+
+    def _one_hot_encoder(self, input_tensor):
+        tensor_list = []
+        for i in range(self.n_classes):
+            temp_prob = input_tensor == i * torch.ones_like(input_tensor)
+            tensor_list.append(temp_prob)
+        output_tensor = torch.cat(tensor_list, dim=1)
+        return output_tensor.float()
+
+    def _dice_loss(self, score, target, ignore_mask):
+        target = target.float()
+        smooth = 1e-5
+        intersect = torch.sum(score * target * ignore_mask)
+        y_sum = torch.sum(target * target * ignore_mask)
+        z_sum = torch.sum(score * score * ignore_mask)
+        loss = (2 * intersect + smooth) / (z_sum + y_sum + smooth)
+        loss = 1 - loss
+        return loss
+
+    def forward(self, inputs, target, weight=None):
+        ignore_mask = torch.ones_like(target)
+        ignore_mask[target == self.ignore_index] = 0
+        target = self._one_hot_encoder(target)
+        if weight is None:
+            weight = [1] * self.n_classes
+        assert inputs.size() == target.size(), 'predict & target shape do not match'
+        class_wise_dice = []
+        loss = 0.0
+        for i in range(0, self.n_classes):
+            dice = self._dice_loss(inputs[:, i], target[:, i], ignore_mask)
+            class_wise_dice.append(1.0 - dice.item())
+            loss += dice * weight[i]
+        return loss / self.n_classes
+
+
 def entropy_minmization(p):
     y1 = -1*torch.sum(p*torch.log(p+1e-6), dim=1)
     ent = torch.mean(y1)
@@ -203,3 +243,67 @@ def entropy_map(p):
     ent_map = -1*torch.sum(p * torch.log(p + 1e-6), dim=1,
                            keepdim=True)
     return ent_map
+
+
+class SizeLoss(nn.Module):
+    def __init__(self, margin=0.1):
+        super(SizeLoss, self).__init__()
+        self.margin = margin
+
+    def forward(self, output, target):
+        output_counts = torch.sum(torch.softmax(output, dim=1), dim=(2, 3))
+        target_counts = torch.zeros_like(output_counts)
+        for b in range(0, target.shape[0]):
+            elements, counts = torch.unique(
+                target[b, :, :, :, :], sorted=True, return_counts=True)
+            assert torch.numel(target[b, :, :, :, :]) == torch.sum(counts)
+            target_counts[b, :] = counts
+
+        lower_bound = target_counts * (1 - self.margin)
+        upper_bound = target_counts * (1 + self.margin)
+        too_small = output_counts < lower_bound
+        too_big = output_counts > upper_bound
+        penalty_small = (output_counts - lower_bound) ** 2
+        penalty_big = (output_counts - upper_bound) ** 2
+        # do not consider background(i.e. channel 0)
+        res = too_small.float()[:, 1:] * penalty_small[:, 1:] + \
+            too_big.float()[:, 1:] * penalty_big[:, 1:]
+        loss = res / (output.shape[2] * output.shape[3] * output.shape[4])
+        return loss.mean()
+
+
+class MumfordShah_Loss(nn.Module):
+    def levelsetLoss(self, output, target, penalty='l1'):
+        # input size = batch x 1 (channel) x height x width
+        outshape = output.shape
+        tarshape = target.shape
+        self.penalty = penalty
+        loss = 0.0
+        for ich in range(tarshape[1]):
+            target_ = torch.unsqueeze(target[:, ich], 1)
+            target_ = target_.expand(
+                tarshape[0], outshape[1], tarshape[2], tarshape[3])
+            pcentroid = torch.sum(target_ * output, (2, 3)
+                                  ) / torch.sum(output, (2, 3))
+            pcentroid = pcentroid.view(tarshape[0], outshape[1], 1, 1)
+            plevel = target_ - \
+                pcentroid.expand(
+                    tarshape[0], outshape[1], tarshape[2], tarshape[3])
+            pLoss = plevel * plevel * output
+            loss += torch.sum(pLoss)
+        return loss
+
+    def gradientLoss2d(self, input):
+        dH = torch.abs(input[:, :, 1:, :] - input[:, :, :-1, :])
+        dW = torch.abs(input[:, :, :, 1:] - input[:, :, :, :-1])
+        if self.penalty == "l2":
+            dH = dH * dH
+            dW = dW * dW
+
+        loss = torch.sum(dH) + torch.sum(dW)
+        return loss
+
+    def forward(self, image, prediction):
+        loss_level = self.levelsetLoss(image, prediction)
+        loss_tv = self.gradientLoss2d(image)
+        return loss_level + loss_tv

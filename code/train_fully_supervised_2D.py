@@ -32,26 +32,24 @@ parser.add_argument('--root_path', type=str,
 parser.add_argument('--exp', type=str,
                     default='ACDC', help='experiment_name')
 parser.add_argument('--fold', type=str,
-                    default='fold1', help='cross validation')
+                    default='fold5', help='cross validation')
 parser.add_argument('--sup_type', type=str,
-                    default='scribble', help='supervision type')
+                    default='label', help='supervision type')
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
 parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--batch_size', type=int, default=16,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
-parser.add_argument('--base_lr', type=float,  default=0.01,
+parser.add_argument('--base_lr', type=float,  default=0.03,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
-parser.add_argument('--seed', type=int,  default=1337, help='random seed')
-parser.add_argument('--labeled_num', type=int, default=50,
-                    help='labeled data')
+parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
 
 
@@ -65,7 +63,7 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path,  fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -99,7 +97,8 @@ def train(args, snapshot_path):
             outputs_soft = torch.softmax(outputs, dim=1)
 
             loss_ce = ce_loss(outputs, label_batch[:].long())
-            loss = loss_ce
+            loss = 0.5 * (loss_ce + dice_loss(outputs_soft, label_batch.unsqueeze(1)))
+            # loss = loss_ce
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

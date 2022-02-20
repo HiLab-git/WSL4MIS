@@ -49,9 +49,7 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
-parser.add_argument('--seed', type=int,  default=1337, help='random seed')
-parser.add_argument('--labeled_num', type=int, default=50,
-                    help='labeled data')
+parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
 
 
@@ -65,7 +63,7 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path,  fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)

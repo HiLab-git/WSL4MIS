@@ -1,0 +1,20 @@
+python -u train_entropy_minimization_2D.py --fold fold1 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Entropy_Minimization --max_iterations 60000 --batch_size 12 &
+python -u train_entropy_minimization_2D.py --fold fold2 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Entropy_Minimization --max_iterations 60000 --batch_size 12 &
+python -u train_entropy_minimization_2D.py --fold fold3 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Entropy_Minimization --max_iterations 60000 --batch_size 12 &
+python -u train_entropy_minimization_2D.py --fold fold4 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Entropy_Minimization --max_iterations 60000 --batch_size 12 &
+python -u train_entropy_minimization_2D.py --fold fold5 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Entropy_Minimization --max_iterations 60000 --batch_size 12 &
+python -u train_deep_adversarial_network_2D.py --fold fold1 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Deep_Adversarial_Network --max_iterations 60000 --batch_size 12 &
+python -u train_deep_adversarial_network_2D.py --fold fold2 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Deep_Adversarial_Network --max_iterations 60000 --batch_size 12 &
+python -u train_deep_adversarial_network_2D.py --fold fold3 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Deep_Adversarial_Network --max_iterations 60000 --batch_size 12 &
+python -u train_deep_adversarial_network_2D.py --fold fold4 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Deep_Adversarial_Network --max_iterations 60000 --batch_size 12 &
+python -u train_deep_adversarial_network_2D.py --fold fold5 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Deep_Adversarial_Network --max_iterations 60000 --batch_size 12 &
+python -u train_uncertainty_aware_mean_teacher_2D.py --fold fold1 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Uncertainty_Aware_Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_uncertainty_aware_mean_teacher_2D.py --fold fold2 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Uncertainty_Aware_Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_uncertainty_aware_mean_teacher_2D.py --fold fold3 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Uncertainty_Aware_Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_uncertainty_aware_mean_teacher_2D.py --fold fold4 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Uncertainty_Aware_Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_uncertainty_aware_mean_teacher_2D.py --fold fold5 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Uncertainty_Aware_Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_mean_teacher_2D.py --fold fold1 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_mean_teacher_2D.py --fold fold2 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_mean_teacher_2D.py --fold fold3 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_mean_teacher_2D.py --fold fold4 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Mean_Teacher --max_iterations 60000 --batch_size 12 &
+python -u train_mean_teacher_2D.py --fold fold5 --num_classes 4 --root_path ../data/ACDC --exp ACDC_Semi/Mean_Teacher --max_iterations 60000 --batch_size 12

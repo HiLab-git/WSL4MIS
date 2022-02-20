@@ -20,9 +20,9 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default='../data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC/WeaklySeg_pCE_MumfordShah_Loss', help='experiment_name')
+                    default='ACDC/Ours', help='experiment_name')
 parser.add_argument('--model', type=str,
-                    default='unet', help='model_name')
+                    default='unet_cct', help='model_name')
 parser.add_argument('--fold', type=str,
                     default='fold5', help='fold')
 parser.add_argument('--num_classes', type=int,  default=4,
@@ -94,9 +94,11 @@ def test_single_volume(case, net, test_save_path, FLAGS):
             0).unsqueeze(0).float().cuda()
         net.eval()
         with torch.no_grad():
-            out_main = net(input)
-            out = torch.argmax(torch.softmax(
-                out_main, dim=1), dim=1).squeeze(0)
+            out_aux1, out_aux2 = net(input)
+            out_aux1_soft = torch.softmax(out_aux1, dim=1)
+            out_aux2_soft = torch.softmax(out_aux2, dim=1)
+            out = torch.argmax(out_aux1_soft, dim=1).squeeze(0)
+            # out = torch.argmax((out_aux1_soft+out_aux2_soft)/2.0, dim=1).squeeze(0)
             out = out.cpu().detach().numpy()
             pred = zoom(out, (x / 256, y / 256), order=0)
             prediction[ind] = pred
@@ -118,7 +120,7 @@ def test_single_volume(case, net, test_save_path, FLAGS):
     prd_itk.CopyInformation(org_img_itk)
     lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
     lab_itk.CopyInformation(org_img_itk)
-    sitk.WriteImage(prd_itk, test_save_path + case + "_pred.nii.gz")
+    sitk.WriteImage(prd_itk, test_save_path + case + "_pred_aux1.nii.gz")
     sitk.WriteImage(img_itk, test_save_path + case + "_img.nii.gz")
     sitk.WriteImage(lab_itk, test_save_path + case + "_gt.nii.gz")
     return first_metric, second_metric, third_metric
@@ -144,6 +146,7 @@ def Inference(FLAGS):
                       class_num=FLAGS.num_classes)
     save_mode_path = os.path.join(
         snapshot_path, 'iter_60000.pth')
+
     net.load_state_dict(torch.load(save_mode_path))
     print("init weight from {}".format(save_mode_path))
     net.eval()

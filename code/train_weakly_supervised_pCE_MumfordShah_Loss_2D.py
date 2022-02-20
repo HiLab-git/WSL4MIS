@@ -24,14 +24,13 @@ from dataloaders import utils
 from dataloaders.dataset import BaseDataSets, RandomGenerator
 from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
-from utils.gate_crf_loss import ModelLossSemsegGatedCRF
 from val_2D import test_single_volume, test_single_volume_ds
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default='../data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC_pCE_GatedCRFLoss', help='experiment_name')
+                    default='ACDC_pCE_MumfordShah_Loss', help='experiment_name')
 parser.add_argument('--fold', type=str,
                     default='fold1', help='cross validation')
 parser.add_argument('--sup_type', type=str,
@@ -41,8 +40,8 @@ parser.add_argument('--model', type=str,
 parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 parser.add_argument('--max_iterations', type=int,
-                    default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=6,
+                    default=60000, help='maximum epoch number to train')
+parser.add_argument('--batch_size', type=int, default=12,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -52,16 +51,6 @@ parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
-
-
-def tv_loss(predication):
-    min_pool_x = nn.functional.max_pool2d(
-        predication * -1, (3, 3), 1, 1) * -1
-    contour = torch.relu(nn.functional.max_pool2d(
-        min_pool_x, (3, 3), 1, 1) - min_pool_x)
-    # length
-    length = torch.mean(torch.abs(contour))
-    return length
 
 
 def train(args, snapshot_path):
@@ -89,8 +78,8 @@ def train(args, snapshot_path):
     optimizer = optim.SGD(model.parameters(), lr=base_lr,
                           momentum=0.9, weight_decay=0.0001)
     ce_loss = CrossEntropyLoss(ignore_index=4)
-    dice_loss = losses.DiceLoss(num_classes)
-    gatecrf_loss = ModelLossSemsegGatedCRF()
+    dice_loss = losses.pDLoss(num_classes, ignore_index=4)
+    mumfordshah_loss = losses.MumfordShah_Loss()
 
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader)))
@@ -99,8 +88,6 @@ def train(args, snapshot_path):
     max_epoch = max_iterations // len(trainloader) + 1
     best_performance = 0.0
     iterator = tqdm(range(max_epoch), ncols=70)
-    loss_gatedcrf_kernels_desc = [{"weight": 1, "xy": 6, "rgb": 0.1}]
-    loss_gatedcrf_radius = 5
     for epoch_num in iterator:
         for i_batch, sampled_batch in enumerate(trainloader):
 
@@ -111,15 +98,8 @@ def train(args, snapshot_path):
             outputs_soft = torch.softmax(outputs, dim=1)
 
             loss_ce = ce_loss(outputs, label_batch[:].long())
-            out_gatedcrf = gatecrf_loss(
-                outputs_soft,
-                loss_gatedcrf_kernels_desc,
-                loss_gatedcrf_radius,
-                volume_batch,
-                256,
-                256,
-            )["loss"]
-            loss = loss_ce + 0.1 * out_gatedcrf
+            loss_mumfordshah = mumfordshah_loss(volume_batch, outputs_soft)
+            loss = loss_ce + 1e-6 * loss_mumfordshah
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -132,11 +112,11 @@ def train(args, snapshot_path):
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
-            writer.add_scalar('info/out_gatedcrf', out_gatedcrf, iter_num)
+            writer.add_scalar('info/loss_mumfordshah', loss_mumfordshah, iter_num)
 
             logging.info(
-                'iteration %d : loss : %f, loss_ce: %f' %
-                (iter_num, loss.item(), loss_ce.item()))
+                'iteration %d : loss : %f, loss_ce: %f, loss_mumfordshah: %f' %
+                (iter_num, loss.item(), loss_ce.item(), loss_mumfordshah.item()))
 
             if iter_num % 20 == 0:
                 image = volume_batch[1, 0:1, :, :]

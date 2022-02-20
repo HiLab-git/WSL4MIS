@@ -14,42 +14,37 @@ from torch.utils.data import Dataset
 from torch.utils.data.sampler import Sampler
 
 
-def pseudo_label_generator_acdc(data, seed, beta=100, mode='bf'):
-    from skimage.exposure import rescale_intensity
-    from skimage.segmentation import random_walker
-    if 1 not in np.unique(seed) or 2 not in np.unique(seed) or 3 not in np.unique(seed):
-        pseudo_label = np.zeros_like(seed)
-    else:
-        markers = np.ones_like(seed)
-        markers[seed == 4] = 0
-        markers[seed == 0] = 1
-        markers[seed == 1] = 2
-        markers[seed == 2] = 3
-        markers[seed == 3] = 4
-        sigma = 0.35
-        data = rescale_intensity(data, in_range=(-sigma, 1 + sigma),
-                                 out_range=(-1, 1))
-        segmentation = random_walker(data, markers, beta, mode)
-        pseudo_label = segmentation - 1
-    return pseudo_label
-
-
 class BaseDataSets(Dataset):
-    def __init__(self, base_dir=None, split='train', transform=None, fold="fold1", sup_type="label"):
+    def __init__(self, base_dir=None, num=4, labeled_type="labeled", split='train', transform=None, fold="fold1", sup_type="label"):
         self._base_dir = base_dir
         self.sample_list = []
         self.split = split
         self.sup_type = sup_type
         self.transform = transform
+        self.num = num
+        self.labeled_type = labeled_type
         train_ids, test_ids = self._get_fold_ids(fold)
+        all_labeled_ids = ["patient{:0>3}".format(10 * i) for i in range(1, 11)]
         if self.split == 'train':
             self.all_slices = os.listdir(
                 self._base_dir + "/ACDC_training_slices")
             self.sample_list = []
-            for ids in train_ids:
-                new_data_list = list(filter(lambda x: re.match(
-                    '{}.*'.format(ids), x) != None, self.all_slices))
-                self.sample_list.extend(new_data_list)
+            labeled_ids = [i for i in all_labeled_ids if i in train_ids]
+            unlabeled_ids = [i for i in train_ids if i not in labeled_ids]
+            if self.labeled_type=="labeled":
+                print("Labeled patients IDs", labeled_ids)
+                for ids in labeled_ids:
+                    new_data_list = list(filter(lambda x: re.match(
+                        '{}.*'.format(ids), x) != None, self.all_slices))
+                    self.sample_list.extend(new_data_list)
+                print("total labeled {} samples".format(len(self.sample_list)))
+            else:
+                print("Unlabeled patients IDs", unlabeled_ids)
+                for ids in unlabeled_ids:
+                    new_data_list = list(filter(lambda x: re.match(
+                        '{}.*'.format(ids), x) != None, self.all_slices))
+                    self.sample_list.extend(new_data_list)
+                print("total unlabeled {} samples".format(len(self.sample_list)))
 
         elif self.split == 'val':
             self.all_volumes = os.listdir(
@@ -62,7 +57,6 @@ class BaseDataSets(Dataset):
 
         # if num is not None and self.split == "train":
         #     self.sample_list = self.sample_list[:num]
-        print("total {} samples".format(len(self.sample_list)))
 
     def _get_fold_ids(self, fold):
         all_cases_set = ["patient{:0>3}".format(i) for i in range(1, 101)]
@@ -119,17 +113,14 @@ class BaseDataSets(Dataset):
         sample = {'image': image, 'label': label}
         if self.split == "train":
             image = h5f['image'][:]
-            if self.sup_type == "random_walker":
-                label = pseudo_label_generator_acdc(image, h5f["scribble"][:])
-            else:
-                label = h5f[self.sup_type][:]
+            label = h5f[self.sup_type][:]
             sample = {'image': image, 'label': label}
             sample = self.transform(sample)
         else:
             image = h5f['image'][:]
             label = h5f['label'][:]
             sample = {'image': image, 'label': label}
-        sample["idx"] = idx
+        sample["idx"] = case.split("_")[0]
         return sample
 
 
@@ -146,8 +137,7 @@ def random_rot_flip(image, label):
 def random_rotate(image, label, cval):
     angle = np.random.randint(-20, 20)
     image = ndimage.rotate(image, angle, order=0, reshape=False)
-    label = ndimage.rotate(label, angle, order=0,
-                           reshape=False, mode="constant", cval=cval)
+    label = ndimage.rotate(label, angle, order=0, reshape=False, mode="constant", cval=cval)
     return image, label
 
 

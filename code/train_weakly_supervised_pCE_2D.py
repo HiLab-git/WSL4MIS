@@ -45,13 +45,11 @@ parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
-parser.add_argument('--base_lr', type=float,  default=0.01,
+parser.add_argument('--base_lr', type=float,  default=0.03,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
-parser.add_argument('--seed', type=int,  default=1337, help='random seed')
-parser.add_argument('--labeled_num', type=int, default=50,
-                    help='labeled data')
+parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
 
 
@@ -65,7 +63,7 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path,  fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -80,7 +78,7 @@ def train(args, snapshot_path):
     optimizer = optim.SGD(model.parameters(), lr=base_lr,
                           momentum=0.9, weight_decay=0.0001)
     ce_loss = CrossEntropyLoss(ignore_index=4)
-    dice_loss = losses.DiceLoss(num_classes)
+    dice_loss = losses.pDLoss(num_classes, ignore_index=4)
 
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader)))

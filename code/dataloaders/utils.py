@@ -1,10 +1,11 @@
 import os
-import torch
+
 import numpy as np
+import scipy.ndimage as nd
+import torch
 import torch.nn as nn
 # import matplotlib.pyplot as plt
 from skimage import measure
-import scipy.ndimage as nd
 
 
 def recursive_glob(rootdir='.', suffix=''):
@@ -13,8 +14,9 @@ def recursive_glob(rootdir='.', suffix=''):
         :param suffix is the suffix to be searched
     """
     return [os.path.join(looproot, filename)
-        for looproot, _, filenames in os.walk(rootdir)
-        for filename in filenames if filename.endswith(suffix)]
+            for looproot, _, filenames in os.walk(rootdir)
+            for filename in filenames if filename.endswith(suffix)]
+
 
 def get_cityscapes_labels():
     return np.array([
@@ -39,15 +41,18 @@ def get_cityscapes_labels():
         [0, 0, 230],
         [119, 11, 32]])
 
+
 def get_pascal_labels():
     """Load the mapping that associates pascal classes with label colors
     Returns:
         np.ndarray with dimensions (21, 3)
     """
     return np.asarray([[0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0],
-                       [0, 0, 128], [128, 0, 128], [0, 128, 128], [128, 128, 128],
+                       [0, 0, 128], [128, 0, 128], [
+                           0, 128, 128], [128, 128, 128],
                        [64, 0, 0], [192, 0, 0], [64, 128, 0], [192, 128, 0],
-                       [64, 0, 128], [192, 0, 128], [64, 128, 128], [192, 128, 128],
+                       [64, 0, 128], [192, 0, 128], [
+                           64, 128, 128], [192, 128, 128],
                        [0, 64, 0], [128, 64, 0], [0, 192, 0], [128, 192, 0],
                        [0, 64, 128]])
 
@@ -76,6 +81,7 @@ def decode_seg_map_sequence(label_masks, dataset='pascal'):
         rgb_masks.append(rgb_mask)
     rgb_masks = torch.from_numpy(np.array(rgb_masks).transpose([0, 3, 1, 2]))
     return rgb_masks
+
 
 def decode_segmap(label_mask, dataset, plot=False):
     """Decode segmentation class labels into a color image
@@ -113,6 +119,7 @@ def decode_segmap(label_mask, dataset, plot=False):
     else:
         return rgb
 
+
 def generate_param_report(logfile, param):
     log_file = open(logfile, 'w')
     # for key, val in param.items():
@@ -120,14 +127,17 @@ def generate_param_report(logfile, param):
     log_file.write(str(param))
     log_file.close()
 
+
 def cross_entropy2d(logit, target, ignore_index=255, weight=None, size_average=True, batch_average=True):
     n, c, h, w = logit.size()
     # logit = logit.permute(0, 2, 3, 1)
     target = target.squeeze(1)
     if weight is None:
-        criterion = nn.CrossEntropyLoss(weight=weight, ignore_index=ignore_index, size_average=False)
+        criterion = nn.CrossEntropyLoss(
+            weight=weight, ignore_index=ignore_index, size_average=False)
     else:
-        criterion = nn.CrossEntropyLoss(weight=torch.from_numpy(np.array(weight)).float().cuda(), ignore_index=ignore_index, size_average=False)
+        criterion = nn.CrossEntropyLoss(weight=torch.from_numpy(np.array(
+            weight)).float().cuda(), ignore_index=ignore_index, size_average=False)
     loss = criterion(logit, target.long())
 
     if size_average:
@@ -137,6 +147,7 @@ def cross_entropy2d(logit, target, ignore_index=255, weight=None, size_average=T
         loss /= n
 
     return loss
+
 
 def lr_poly(base_lr, iter_, max_iter=100, power=0.9):
     return base_lr * ((1 - float(iter_) / max_iter) ** power)
@@ -170,6 +181,7 @@ def get_iou(pred, gt, n_classes=21):
 
     return total_iou
 
+
 def get_dice(pred, gt):
     total_dice = 0.0
     pred = pred.long()
@@ -177,11 +189,13 @@ def get_dice(pred, gt):
     for i in range(len(pred)):
         pred_tmp = pred[i]
         gt_tmp = gt[i]
-        dice = 2.0*torch.sum(pred_tmp*gt_tmp).item()/(1.0+torch.sum(pred_tmp**2)+torch.sum(gt_tmp**2)).item()
+        dice = 2.0*torch.sum(pred_tmp*gt_tmp).item()/(1.0 +
+                                                      torch.sum(pred_tmp**2)+torch.sum(gt_tmp**2)).item()
         print(dice)
         total_dice += dice
 
     return total_dice
+
 
 def get_mc_dice(pred, gt, num=2):
     # num is the total number of classes, include the background
@@ -190,25 +204,23 @@ def get_mc_dice(pred, gt, num=2):
     gt = gt.long()
     for i in range(len(pred)):
         for j in range(1, num):
-            pred_tmp = (pred[i]==j)
-            gt_tmp = (gt[i]==j)
-            dice = 2.0*torch.sum(pred_tmp*gt_tmp).item()/(1.0+torch.sum(pred_tmp**2)+torch.sum(gt_tmp**2)).item()
-            total_dice[j-1] +=dice
+            pred_tmp = (pred[i] == j)
+            gt_tmp = (gt[i] == j)
+            dice = 2.0*torch.sum(pred_tmp*gt_tmp).item()/(1.0 +
+                                                          torch.sum(pred_tmp**2)+torch.sum(gt_tmp**2)).item()
+            total_dice[j-1] += dice
     return total_dice
+
 
 def post_processing(prediction):
     prediction = nd.binary_fill_holes(prediction)
-    label_cc, num_cc = measure.label(prediction,return_num=True)
+    label_cc, num_cc = measure.label(prediction, return_num=True)
     total_cc = np.sum(prediction)
     measure.regionprops(label_cc)
-    for cc in range(1,num_cc+1):
-        single_cc = (label_cc==cc)
+    for cc in range(1, num_cc+1):
+        single_cc = (label_cc == cc)
         single_vol = np.sum(single_cc)
-        if single_vol/total_cc<0.2:
-            prediction[single_cc]=0
+        if single_vol/total_cc < 0.2:
+            prediction[single_cc] = 0
 
     return prediction
-
-
-
-

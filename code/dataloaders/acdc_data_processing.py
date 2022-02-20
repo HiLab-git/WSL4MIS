@@ -23,10 +23,12 @@ class MedicalImageDeal(object):
     def norm_img(self):
         return (self.img - self.img.min()) / (self.img.max() - self.img.min())
 
+# saving images in slice level
+
 
 slice_num = 0
 mask_path = sorted(
-    glob.glob("/home/xdluo/Data/Datesets/ACDC2017/ACDC_training/*_gt.nii.gz"))
+    glob.glob("../data/ACDC_training/*_gt.nii.gz"))
 for case in mask_path:
     label_itk = sitk.ReadImage(case)
     label = sitk.GetArrayFromImage(label_itk)
@@ -40,7 +42,7 @@ for case in mask_path:
     scribble = sitk.GetArrayFromImage(scribble_itk)
 
     image = MedicalImageDeal(image, percent=0.99).valid_img
-    image = (image - image.mean()) / image.std()
+    image = (image - image.min()) / (image.max() - image.min())
     print(image.shape)
     image = image.astype(np.float32)
     item = case.split("/")[-1].split(".")[0].replace("_gt", "")
@@ -49,7 +51,7 @@ for case in mask_path:
     print(item)
     for slice_ind in range(image.shape[0]):
         f = h5py.File(
-            '/home/xdluo/Data/Datesets/ACDC2017/ACDC_training_slices/{}_slice_{}.h5'.format(item, slice_ind), 'w')
+            '../data/ACDC_training_slices/{}_slice_{}.h5'.format(item, slice_ind), 'w')
         f.create_dataset(
             'image', data=image[slice_ind], compression="gzip")
         f.create_dataset('label', data=label[slice_ind], compression="gzip")
@@ -60,7 +62,7 @@ for case in mask_path:
 print("Converted all ACDC volumes to 2D slices")
 print("Total {} slices".format(slice_num))
 
-# save images in volume level
+# saving images in volume level
 
 
 class MedicalImageDeal(object):
@@ -82,7 +84,7 @@ class MedicalImageDeal(object):
 
 slice_num = 0
 mask_path = sorted(
-    glob.glob("/home/xdluo/Data/Datesets/ACDC2017/ACDC_training/*_gt.nii.gz"))
+    glob.glob("../data/ACDC_training/*_gt.nii.gz"))
 for case in mask_path:
     label_itk = sitk.ReadImage(case)
     label = sitk.GetArrayFromImage(label_itk)
@@ -96,7 +98,7 @@ for case in mask_path:
     scribble = sitk.GetArrayFromImage(scribble_itk)
 
     image = MedicalImageDeal(image, percent=0.99).valid_img
-    image = (image - image.mean()) / image.std()
+    image = (image - image.min()) / (image.max() - image.min())
     print(image.shape)
     image = image.astype(np.float32)
     item = case.split("/")[-1].split(".")[0].replace("_gt", "")
@@ -104,7 +106,7 @@ for case in mask_path:
         print("Error")
     print(item)
     f = h5py.File(
-        '/home/xdluo/Data/Datesets/ACDC2017/ACDC_training_volumes/{}.h5'.format(item), 'w')
+        '../data/ACDC_training_volumes/{}.h5'.format(item), 'w')
     f.create_dataset(
         'image', data=image, compression="gzip")
     f.create_dataset('label', data=label, compression="gzip")
