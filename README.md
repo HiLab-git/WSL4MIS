@@ -16,12 +16,12 @@
 # Dataset
 * The ACDC dataset with mask annotations can be downloaded from: [ACDC](https://www.creatis.insa-lyon.fr/Challenge/acdc/databases.html).
 * The Scribble annotations of ACDC can be downloaded from: [Scribble](https://gvalvano.github.io/wss-multiscale-adversarial-attention-gates/data).
-* The data processing code in [Here](https://github.com/Luoxd1996/WSL4MIS/blob/main/code/dataloaders/acdc_data_processing.py) or email [me](luoxd1996@gmail.com) for pre-processed data.
+* The data processing code in [Here](https://github.com/Luoxd1996/WSL4MIS/blob/main/code/dataloaders/acdc_data_processing.py)  the pre-processed ACDC data in [Here](https://github.com/HiLab-git/WSL4MIS/tree/main/data/ACDC).
 # Requirements
 Some important required packages include:
 * [Pytorch][torch_link] version >=0.4.1.
 * TensorBoardX
-* Python == 3.6 
+* Python >= 3.6 
 * Efficientnet-Pytorch `pip install efficientnet_pytorch`
 * Some basic python packages such as Numpy, Scikit-image, SimpleITK, Scipy ......
 
@@ -41,7 +41,7 @@ cd WSL4MIS
 3. Train the model
 ```
 cd code
-python train_XXX_2D.py
+python train_XXX_2D.py or bash train_ssl.sh or bash train_wss.sh
 ```
 
 4. Test the model
@@ -58,7 +58,11 @@ python test_2D_fully.py
 * [**pCE + Entropy Minimization**](https://arxiv.org/pdf/2111.02403.pdf)
 * [**pCE + GatedCRFLoss**](https://github.com/LEONOB2014/GatedCRFLoss)
 * [**pCE + Intensity Variance Minimization**](https://arxiv.org/pdf/2111.02403.pdf)
-
+* [**pCE + Random Walker**](http://vision.cse.psu.edu/people/chenpingY/paper/grady2006random.pdf)
+* [**pCE + MumfordShah_Loss**](https://arxiv.org/pdf/1904.02872.pdf)
+* [**Scribble2Label**](https://arxiv.org/pdf/2006.12890.pdf)
+* [**USTM**](https://www.sciencedirect.com/science/article/pii/S0031320321005215)
+* 
 # Acknowledgement
 * The GatedCRFLoss is adapted from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss) for medical image segmentation.
 * The codebase is adapted from our previous work [SSL4MIS](https://github.com/HiLab-git/SSL4MIS).
