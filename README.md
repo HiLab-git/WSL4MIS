@@ -1,5 +1,6 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. If you use this codebase in your research, please cite the following works:
+* This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. We also investigated the comprehensive results on the ACDC dataset on this [tech_report](https://github.com/Luoxd1996/WSL4MIS/WSL4MIS-Tech-Report.pdf).
+If you use this codebase in your research, please cite the following works:
  
 		@article{luo2021word,
 		title={{WORD}: Revisiting Organs Segmentation in the Whole Abdominal Region},
@@ -31,23 +32,29 @@ Follow official guidance to install [Pytorch][torch_link].
 
 # Usage
 
-1. Clone the repo:
+1. Clone this project.
 ```
-git clone https://github.com/HiLab-git/WSL4MIS
+git clone https://github.com/Luoxd1996/WSL4MIS
 cd WSL4MIS
 ```
-2. Download and pre-process data and put the data in  `../data/ACDC`.
-
-3. Train the model (5-fold cross-validation):
+2. Data pre-processing os used or the processed data.
 ```
 cd code
-python train_XXX_2D.py or bash train_ssl.sh or bash train_wss.sh
+python dataloaders/acdc_data_processing.py
+```
+3. Train the model
+```
+cd code
+bash train_wss.sh # train model with scribble or dense annotations.
+bash train_ssl.sh  # train model with mix-supervision (mask annotations and without annotation).
 ```
 
-4. Test the model:
+4. Test the model
 ```
-python test_2D_fully.py
+python test_2D_fully.py --sup_type scribble/label --exp ACDC/the trained model fold --model unet
+python test_2D_fully_sps.py --sup_type scribble --exp ACDC/the trained model fold --model unet_cct
 ```
+
 5. Training curves on the fold1:
 ![](https://github.com/Luoxd1996/WSL4MIS/blob/main/imgs/fold1_curve.png) 
 **Note**: pCE means partially cross-entropy, TV means total variation, label denotes supervised by mask, scribble represents just supervised by scribbles.

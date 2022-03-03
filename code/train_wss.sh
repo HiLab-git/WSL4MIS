@@ -38,3 +38,8 @@ python -u train_weakly_supervised_pCE_random_walker_2D.py --fold fold2 --num_cla
 python -u train_weakly_supervised_pCE_random_walker_2D.py --fold fold3 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Random_Walker --max_iterations 60000 --batch_size 12 &
 python -u train_weakly_supervised_pCE_random_walker_2D.py --fold fold4 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Random_Walker --max_iterations 60000 --batch_size 12 &
 python -u train_weakly_supervised_pCE_random_walker_2D.py --fold fold5 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Random_Walker --max_iterations 60000 --batch_size 12 & 
+python -u  train_weakly_supervised_segmentation_pCE_ours_proposed.py --fold fold1 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Proposed --max_iterations 60000 --batch_size 12 &
+python -u  train_weakly_supervised_segmentation_pCE_ours_proposed.py --fold fold2 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Proposed --max_iterations 60000 --batch_size 12 &
+python -u  train_weakly_supervised_segmentation_pCE_ours_proposed.py --fold fold3 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Proposed --max_iterations 60000 --batch_size 12 &
+python -u  train_weakly_supervised_segmentation_pCE_ours_proposed.py --fold fold4 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Proposed --max_iterations 60000 --batch_size 12 &
+python -u  train_weakly_supervised_segmentation_pCE_ours_proposed.py --fold fold5 --num_classes 4 --root_path ../data/ACDC --exp ACDC/WeaklySeg_pCE_Proposed --max_iterations 60000 --batch_size 12 

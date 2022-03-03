@@ -120,7 +120,7 @@ def test_single_volume(case, net, test_save_path, FLAGS):
     prd_itk.CopyInformation(org_img_itk)
     lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
     lab_itk.CopyInformation(org_img_itk)
-    sitk.WriteImage(prd_itk, test_save_path + case + "_pred_aux1.nii.gz")
+    sitk.WriteImage(prd_itk, test_save_path + case + "_pred.nii.gz")
     sitk.WriteImage(img_itk, test_save_path + case + "_img.nii.gz")
     sitk.WriteImage(lab_itk, test_save_path + case + "_gt.nii.gz")
     return first_metric, second_metric, third_metric

@@ -1,11 +1,3 @@
-#!/usr/bin/env python 
-# -*- coding: utf-8 -*-
-# @Time    : 2019/12/14 下午4:41
-# @Author  : chuyu zhang
-# @File    : metrics.py
-# @Software: PyCharm
-
-
 import numpy as np
 from medpy import metric
 

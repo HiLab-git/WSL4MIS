@@ -203,7 +203,7 @@ def grouper(iterable, n):
 
 
 if __name__ == '__main__':
-    data_root = '/home/SENSETIME/fengshixiang/Projects/WSS4MIS/data/ACDC/'
+    data_root = '../data/ACDC/'
     labeled_slice = 146
 
     db_train = BaseDataSets(base_dir=data_root, split="train", num=None,
@@ -235,23 +235,3 @@ if __name__ == '__main__':
               label_batch.shape, pseudo_batch.shape)
         print(case)
         print(torch.unique(mask_batch))
-    # for i in range(len(db_train)):
-    #     sample = db_train.__getitem__(i)
-    #     case = sample['id']
-    #     img = sample['image']
-    #     mask = sample['mask']
-    #     scr = sample['scribble']
-    #     print(img.shape, scr.shape, mask.shape)
-    #     pseudo = sample['pseudo']
-    #     print(img.shape, scr.shape, mask.shape, pseudo.shape)
-    #     print(np.unique(mask), np.unique(scr))
-    #     plt.subplot(141)
-    #     plt.imshow(img[0], cmap='gray')
-    #     plt.subplot(142)
-    #     plt.imshow(scr, cmap='gray')
-    #     plt.subplot(143)
-    #     plt.imshow(mask, cmap='gray')
-    #     plt.subplot(144)
-    #     plt.imshow(pseudo, cmap='gray')
-    #     plt.savefig('/home/SENSETIME/fengshixiang/Desktop/img.png')
-    #     break
