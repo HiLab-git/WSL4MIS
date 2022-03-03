@@ -1,7 +1,5 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. We also investigated the comprehensive results on the ACDC dataset on this [Tech Report](https://github.com/Luoxd1996/WSL4MIS/WSL4MIS-Tech-Report.pdf).
-
-If you use this codebase in your research, please cite the following works:
+* This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. We also investigated the comprehensive results on the ACDC dataset on this [Tech Report](https://github.com/Luoxd1996/WSL4MIS/WSL4MIS-Tech-Report.pdf).　If you use this codebase in your research, please cite the following works:
  
 		@article{luo2021word,
 		title={{WORD}: Revisiting Organs Segmentation in the Whole Abdominal Region},
