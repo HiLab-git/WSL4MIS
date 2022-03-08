@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-# Author: Shuojue Yang (main contribution) and Xiangde Luo (minor modification for WORD).
+# Author: Shuojue Yang (main contribution) and Xiangde Luo (minor modification for WORD and other datasets).
 # Date:   16 Dec. 2021
-# Implementation for simulation of the sparse scribble annotation based on the dense annotation in the WORD dataset.
+# Implementation for simulation of the sparse scribble annotation based on the dense annotation for the WORD dataset and other datasets.
 # # Reference:
 #   @article{luo2021word,
 #   title={{WORD}: Revisiting Organs Segmentation in the Whole Abdominal Region},
@@ -14,6 +14,7 @@
 #   author={Xiangde Luo, Minhao Hu, Wenjun Liao, Shuwei Zhai, Tao Song, Guotai Wang, Shaoting Zhang},
 #   journal={arXiv preprint arXiv:2203.02106},
 #   year={2022}}
+#   If you have any questions, please contact Xiangde Luo (https://luoxd1996.github.io).
 
 
 import glob
