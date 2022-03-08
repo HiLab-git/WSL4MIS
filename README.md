@@ -1,5 +1,11 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
 * This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. We also investigated the comprehensive results on the ACDC dataset on this [Tech Report](https://github.com/Luoxd1996/WSL4MIS/WSL4MIS-Tech-Report.pdf).　If you use this codebase in your research, please cite the following works:
+
+		@article{luo2022scribbleseg,
+		title={Scribble-Supervised Medical Image Segmentation via Dual-Branch Network and Dynamically Mixed Pseudo Labels Supervision},
+		author={Xiangde Luo, Minhao Hu, Wenjun Liao, Shuwei Zhai, Tao Song, Guotai Wang, Shaoting Zhang},
+		journal={arXiv preprint arXiv:2203.02106},
+		year={2022}}
  
 		@article{luo2021word,
 		title={{WORD}: Revisiting Organs Segmentation in the Whole Abdominal Region},
