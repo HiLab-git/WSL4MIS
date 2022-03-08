@@ -17,6 +17,7 @@
 * The ACDC dataset with mask annotations can be downloaded from: [ACDC](https://www.creatis.insa-lyon.fr/Challenge/acdc/databases.html).
 * The Scribble annotations of ACDC can be downloaded from: [Scribble](https://gvalvano.github.io/wss-multiscale-adversarial-attention-gates/data).
 * The data processing code in [Here](https://github.com/Luoxd1996/WSL4MIS/blob/main/code/dataloaders/acdc_data_processing.py)  the pre-processed ACDC data in [Here](https://github.com/HiLab-git/WSL4MIS/tree/main/data/ACDC).
+* To simulate the scribble annotation for other datasets, we further provide the simulation code [Here](https://github.com/HiLab-git/WSL4MIS/blob/main/code/scribbles_generator.py).
 # Requirements
 Some important required packages include:
 * [Pytorch][torch_link] version >=0.4.1.
