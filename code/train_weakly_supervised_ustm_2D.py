@@ -52,6 +52,7 @@ parser.add_argument('--patch_size', type=list,  default=[256, 256],
 parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
 
+
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
     return 1.0 * ramps.sigmoid_rampup(epoch, 60)
@@ -62,6 +63,7 @@ def update_ema_variables(model, ema_model, alpha, global_step):
     alpha = min(1 - 1 / (global_step + 1), alpha)
     for ema_param, param in zip(ema_model.parameters(), model.parameters()):
         ema_param.data.mul_(alpha).add_(1 - alpha, param.data)
+
 
 def train(args, snapshot_path):
     base_lr = args.base_lr
@@ -84,7 +86,8 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path,  fold=args.fold, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path,
+                          fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -119,7 +122,8 @@ def train(args, snapshot_path):
 
             rot_times = random.randrange(0, 4)
             rotated_volume_batch = torch.rot90(volume_batch, rot_times, [2, 3])
-            noise = torch.clamp(torch.randn_like(rotated_volume_batch) * 0.1, -0.2, 0.2)
+            noise = torch.clamp(torch.randn_like(
+                rotated_volume_batch) * 0.1, -0.2, 0.2)
             with torch.no_grad():
                 ema_inputs = rotated_volume_batch + noise
                 ema_output = ema_model(ema_inputs)
@@ -130,20 +134,22 @@ def train(args, snapshot_path):
             preds = torch.zeros([stride * T, num_classes, w, h]).cuda()
             for i in range(T // 2):
                 ema_inputs = volume_batch_r + \
-                             torch.clamp(torch.randn_like(
-                                 volume_batch_r) * 0.1, -0.2, 0.2)
+                    torch.clamp(torch.randn_like(
+                        volume_batch_r) * 0.1, -0.2, 0.2)
                 with torch.no_grad():
                     preds[2 * stride * i:2 * stride *
-                                         (i + 1)] = ema_model(ema_inputs)
+                          (i + 1)] = ema_model(ema_inputs)
             preds = F.softmax(preds, dim=1)
             preds = preds.reshape(T, stride, num_classes, w, h)
             preds = torch.mean(preds, dim=0)
             uncertainty = -1.0 * \
-                          torch.sum(preds * torch.log(preds + 1e-6), dim=1, keepdim=True)
-            consistency_weight = get_current_consistency_weight(iter_num // 1000)
+                torch.sum(preds * torch.log(preds + 1e-6), dim=1, keepdim=True)
+            consistency_weight = get_current_consistency_weight(
+                iter_num // 1000)
 
             rotated_ouputs = torch.rot90(outputs, rot_times, [2, 3])
-            consistency_dist = losses.softmax_mse_loss(rotated_ouputs, ema_output)
+            consistency_dist = losses.softmax_mse_loss(
+                rotated_ouputs, ema_output)
             threshold = (0.75 + 0.25 * ramps.sigmoid_rampup(iter_num,
                                                             max_iterations)) * np.log(2)
             mask = (uncertainty < threshold).float()

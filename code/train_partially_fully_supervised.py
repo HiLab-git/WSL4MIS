@@ -6,6 +6,7 @@ import shutil
 import sys
 import time
 from itertools import cycle
+
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
@@ -22,7 +23,7 @@ from tqdm import tqdm
 
 from dataloaders import utils
 from dataloaders.dataset_semi import (BaseDataSets, RandomGenerator,
-                                 TwoStreamBatchSampler)
+                                      TwoStreamBatchSampler)
 from networks.discriminator import FCDiscriminator
 from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
@@ -85,18 +86,19 @@ def train(args, snapshot_path):
 
     model = net_factory(net_type=args.model, in_chns=1, class_num=num_classes)
 
-    db_train_labeled = BaseDataSets(base_dir=args.root_path , num=4, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
+    db_train_labeled = BaseDataSets(base_dir=args.root_path, num=4, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]))
     db_train_unlabeled = BaseDataSets(base_dir=args.root_path, num=4, labeled_type="unlabeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)]))
 
     trainloader_labeled = DataLoader(db_train_labeled, batch_size=args.batch_size//2, shuffle=True,
-                             num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
-    trainloader_unlabeled = DataLoader(db_train_unlabeled, batch_size=args.batch_size//2, shuffle=True,
                                      num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader_unlabeled = DataLoader(db_train_unlabeled, batch_size=args.batch_size//2, shuffle=True,
+                                       num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
 
-    db_val = BaseDataSets(base_dir=args.root_path, fold=args.fold, split="val", )
+    db_val = BaseDataSets(base_dir=args.root_path,
+                          fold=args.fold, split="val", )
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
                            num_workers=1)
 

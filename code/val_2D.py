@@ -86,6 +86,7 @@ def test_single_volume_ds(image, label, net, classes, patch_size=[256, 256]):
             prediction == i, label == i))
     return metric_list
 
+
 def test_single_volume_cct(image, label, net, classes, patch_size=[256, 256]):
     image, label = image.squeeze(0).cpu().detach(
     ).numpy(), label.squeeze(0).cpu().detach().numpy()

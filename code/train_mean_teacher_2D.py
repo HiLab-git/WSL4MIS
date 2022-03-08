@@ -6,6 +6,7 @@ import shutil
 import sys
 import time
 from itertools import cycle
+
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
@@ -22,7 +23,7 @@ from tqdm import tqdm
 
 from dataloaders import utils
 from dataloaders.dataset_semi import (BaseDataSets, RandomGenerator,
-                                 TwoStreamBatchSampler)
+                                      TwoStreamBatchSampler)
 from networks.discriminator import FCDiscriminator
 from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
@@ -73,6 +74,7 @@ def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
     return args.consistency * ramps.sigmoid_rampup(epoch, args.consistency_rampup)
 
+
 def update_ema_variables(model, ema_model, alpha, global_step):
     # Use the true average until the exponential average is more correct
     alpha = min(1 - 1 / (global_step + 1), alpha)
@@ -101,18 +103,19 @@ def train(args, snapshot_path):
     model = create_model()
     ema_model = create_model(ema=True)
 
-    db_train_labeled = BaseDataSets(base_dir=args.root_path , num=8, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
+    db_train_labeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]))
     db_train_unlabeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="unlabeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)]))
 
     trainloader_labeled = DataLoader(db_train_labeled, batch_size=args.batch_size//2, shuffle=True,
-                             num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
-    trainloader_unlabeled = DataLoader(db_train_unlabeled, batch_size=args.batch_size//2, shuffle=True,
                                      num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader_unlabeled = DataLoader(db_train_unlabeled, batch_size=args.batch_size//2, shuffle=True,
+                                       num_workers=16, pin_memory=True, worker_init_fn=worker_init_fn)
 
-    db_val = BaseDataSets(base_dir=args.root_path, fold=args.fold, split="val", )
+    db_val = BaseDataSets(base_dir=args.root_path,
+                          fold=args.fold, split="val", )
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
                            num_workers=1)
 
@@ -158,11 +161,13 @@ def train(args, snapshot_path):
             loss_ce = ce_loss(outputs, label_batch[:].long())
             loss_dice = dice_loss(outputs_soft, label_batch.unsqueeze(1))
             supervised_loss = 0.5 * (loss_dice + loss_ce)
-            consistency_weight = get_current_consistency_weight(iter_num // 300)
+            consistency_weight = get_current_consistency_weight(
+                iter_num // 300)
             # if iter_num < 1000:
             #     consistency_loss = 0.0
             # else:
-            consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft) ** 2)
+            consistency_loss = torch.mean(
+                (outputs_unlabeled_soft - ema_output_soft) ** 2)
             loss = supervised_loss + consistency_weight * consistency_loss
             optimizer.zero_grad()
             loss.backward()

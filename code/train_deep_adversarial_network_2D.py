@@ -6,6 +6,7 @@ import shutil
 import sys
 import time
 from itertools import cycle
+
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
@@ -19,7 +20,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import make_grid
 from tqdm import tqdm
-from networks.discriminator import FCDiscriminator
+
 from dataloaders import utils
 from dataloaders.dataset_semi import (BaseDataSets, RandomGenerator,
                                       TwoStreamBatchSampler)

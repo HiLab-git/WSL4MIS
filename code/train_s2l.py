@@ -4,46 +4,59 @@ import os
 import random
 import shutil
 import sys
-from scipy.ndimage import zoom
-from PIL import Image
 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
+from PIL import Image
+from scipy.ndimage import zoom
 from tensorboardX import SummaryWriter
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
 
-from dataloaders.dataset import (BaseDataSets, TwoStreamBatchSampler)
+from dataloaders.dataset import BaseDataSets, TwoStreamBatchSampler
 from dataloaders.dataset_s2l import BaseDataSets_s2l, RandomGenerator_s2l
 from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
 from val_2D import test_single_volume
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--root_path', type=str, default='../data/ACDC', help='Name of Experiment')
-parser.add_argument('--exp', type=str, default='ACDC/pCE_scribble2label', help='experiment_name')
-parser.add_argument('--fold', type=str, default='fold1', help='cross validation')
-parser.add_argument('--sup_type', type=str, default='scribble', help='supervision type')
+parser.add_argument('--root_path', type=str,
+                    default='../data/ACDC', help='Name of Experiment')
+parser.add_argument('--exp', type=str,
+                    default='ACDC/pCE_scribble2label', help='experiment_name')
+parser.add_argument('--fold', type=str, default='fold1',
+                    help='cross validation')
+parser.add_argument('--sup_type', type=str,
+                    default='scribble', help='supervision type')
 parser.add_argument('--model', type=str, default='unet', help='model_name')
-parser.add_argument('--num_classes', type=int,  default=4, help='output channel of network')
-parser.add_argument('--max_iterations', type=int, default=60000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=12, help='batch_size per gpu')
-parser.add_argument('--deterministic', type=int,  default=1, help='whether use deterministic training')
-parser.add_argument('--base_lr', type=float,  default=0.01, help='segmentation network learning rate')
-parser.add_argument('--patch_size', type=list,  default=[256, 256], help='patch size of network input')
+parser.add_argument('--num_classes', type=int,  default=4,
+                    help='output channel of network')
+parser.add_argument('--max_iterations', type=int,
+                    default=60000, help='maximum epoch number to train')
+parser.add_argument('--batch_size', type=int, default=12,
+                    help='batch_size per gpu')
+parser.add_argument('--deterministic', type=int,  default=1,
+                    help='whether use deterministic training')
+parser.add_argument('--base_lr', type=float,  default=0.01,
+                    help='segmentation network learning rate')
+parser.add_argument('--patch_size', type=list,
+                    default=[256, 256], help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=1337, help='random seed')
 
-parser.add_argument('--labeled_bs', type=int, default=6, help='labeled_batch_size per gpu')
+parser.add_argument('--labeled_bs', type=int, default=6,
+                    help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4, help='labeled data')
 
 # costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
-parser.add_argument('--consistency', type=float, default=0.1, help='consistency')
-parser.add_argument('--consistency_rampup', type=float, default=200.0, help='consistency_rampup')
+parser.add_argument('--consistency', type=float,
+                    default=0.1, help='consistency')
+parser.add_argument('--consistency_rampup', type=float,
+                    default=200.0, help='consistency_rampup')
 
 
 parser.add_argument('--period_iter', type=int, default=100)
@@ -57,7 +70,8 @@ args = parser.parse_args()
 def patients_to_slices(dataset, patients_num):
     ref_dict = None
     if "ACDC" in dataset:
-        ref_dict = {"4": 68, "8": 146, "16": 310, "24": 450, "32": 588, "40": 724, "80": 1512}
+        ref_dict = {"4": 68, "8": 146, "16": 310,
+                    "24": 450, "32": 588, "40": 724, "80": 1512}
     else:
         print("Error")
     return ref_dict[str(patients_num)]
@@ -70,21 +84,25 @@ def train(args, snapshot_path):
 
     model = net_factory(net_type=args.model, in_chns=1, class_num=num_classes)
     db_train = BaseDataSets_s2l(base_dir=args.root_path, fold=args.fold,
-                            transform=transforms.Compose([RandomGenerator_s2l(args.patch_size)]))
-    db_val = BaseDataSets(base_dir=args.root_path,  fold=args.fold, split="val")
+                                transform=transforms.Compose([RandomGenerator_s2l(args.patch_size)]))
+    db_val = BaseDataSets(base_dir=args.root_path,
+                          fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
 
     total_slices = len(db_train)
-    print("Total silices is: {}, labeled slices is: {}".format(total_slices, total_slices))
+    print("Total silices is: {}, labeled slices is: {}".format(
+        total_slices, total_slices))
 
-    trainloader = DataLoader(db_train, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
+    trainloader = DataLoader(db_train, batch_size=args.batch_size, shuffle=True,
+                             num_workers=8, pin_memory=True, worker_init_fn=worker_init_fn)
     valloader = DataLoader(db_val, batch_size=1, shuffle=False, num_workers=1)
 
     model.train()
 
-    optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.SGD(model.parameters(), lr=base_lr,
+                          momentum=0.9, weight_decay=0.0001)
     ce_loss = CrossEntropyLoss(ignore_index=4)
     u_ce_loss = CrossEntropyLoss(ignore_index=4)
 
@@ -98,7 +116,8 @@ def train(args, snapshot_path):
     for epoch_num in iterator:
         for i_batch, sampled_batch in enumerate(trainloader):
 
-            volume_batch, label_batch, weight_batch = sampled_batch['image'], sampled_batch['scribble'], sampled_batch['weight']
+            volume_batch, label_batch, weight_batch = sampled_batch[
+                'image'], sampled_batch['scribble'], sampled_batch['weight']
             volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
 
             outputs = model(volume_batch)
@@ -108,7 +127,7 @@ def train(args, snapshot_path):
             else:
                 scribbles = label_batch.long().cpu()
                 mean_0, mean_1, mean_2, mean_3 = weight_batch[..., 0], weight_batch[..., 1], weight_batch[..., 2], \
-                                                 weight_batch[..., 3]
+                    weight_batch[..., 3]
                 # print(torch.zeros_like(mean_0).long().dtype, (4*torch.ones_like(scribbles.long())).dtype)
 
                 u_labels_0 = torch.where((mean_0 > args.thr_conf) & (scribbles == 4),
@@ -146,8 +165,10 @@ def train(args, snapshot_path):
                 image = volume_batch[1, 0:1, :, :]
                 image = (image - image.min()) / (image.max() - image.min())
                 writer.add_image('train/Image', image, iter_num)
-                outputs = torch.argmax(torch.softmax(outputs, dim=1), dim=1, keepdim=True)
-                writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
+                outputs = torch.argmax(torch.softmax(
+                    outputs, dim=1), dim=1, keepdim=True)
+                writer.add_image('train/Prediction',
+                                 outputs[1, ...] * 50, iter_num)
                 labs = label_batch[1, ...].unsqueeze(0) * 50
                 writer.add_image('train/GroundTruth', labs, iter_num)
 
@@ -160,8 +181,10 @@ def train(args, snapshot_path):
                     metric_list += np.array(metric_i)
                 metric_list = metric_list / len(db_val)
                 for class_i in range(num_classes-1):
-                    writer.add_scalar('info/val_{}_dice'.format(class_i+1), metric_list[class_i, 0], iter_num)
-                    writer.add_scalar('info/val_{}_hd95'.format(class_i+1), metric_list[class_i, 1], iter_num)
+                    writer.add_scalar(
+                        'info/val_{}_dice'.format(class_i+1), metric_list[class_i, 0], iter_num)
+                    writer.add_scalar(
+                        'info/val_{}_hd95'.format(class_i+1), metric_list[class_i, 1], iter_num)
 
                 performance = np.mean(metric_list, axis=0)[0]
                 mean_hd95 = np.mean(metric_list, axis=0)[1]
@@ -173,7 +196,8 @@ def train(args, snapshot_path):
                     save_mode_path = os.path.join(snapshot_path,
                                                   'iter_{}_dice_{}.pth'.format(
                                                       iter_num, round(best_performance, 4)))
-                    save_best = os.path.join(snapshot_path, '{}_best_model.pth'.format(args.model))
+                    save_best = os.path.join(
+                        snapshot_path, '{}_best_model.pth'.format(args.model))
                     torch.save(model.state_dict(), save_mode_path)
                     torch.save(model.state_dict(), save_best)
 
@@ -182,7 +206,8 @@ def train(args, snapshot_path):
                 model.train()
 
             if iter_num % 3000 == 0:
-                save_mode_path = os.path.join(snapshot_path, 'iter_' + str(iter_num) + '.pth')
+                save_mode_path = os.path.join(
+                    snapshot_path, 'iter_' + str(iter_num) + '.pth')
                 torch.save(model.state_dict(), save_mode_path)
                 logging.info("save model to {}".format(save_mode_path))
 
@@ -190,23 +215,31 @@ def train(args, snapshot_path):
                 logging.info("update weight start")
                 ds = trainloader.dataset
                 if not os.path.exists(os.path.join(snapshot_path, 'ensemble', str(iter_num))):
-                    os.makedirs(os.path.join(snapshot_path, 'ensemble', str(iter_num)))
+                    os.makedirs(os.path.join(snapshot_path,
+                                'ensemble', str(iter_num)))
                 # for idx, images in tqdm(ds.images.items(), total=len(ds)):
                 for idx, images in ds.images.items():
                     img = images['image']
-                    img = zoom(img, (256 / img.shape[0], 256 / img.shape[1]), order=0)
-                    img = torch.from_numpy(img).unsqueeze(0).unsqueeze(0).cuda()
+                    img = zoom(
+                        img, (256 / img.shape[0], 256 / img.shape[1]), order=0)
+                    img = torch.from_numpy(img).unsqueeze(
+                        0).unsqueeze(0).cuda()
                     with torch.no_grad():
                         pred = torch.nn.functional.softmax(model(img), dim=1)
                     pred = pred.squeeze(0).cpu().numpy()
-                    pred = zoom(pred, (1, images['image'].shape[0] / 256, images['image'].shape[1] / 256), order=0)
+                    pred = zoom(
+                        pred, (1, images['image'].shape[0] / 256, images['image'].shape[1] / 256), order=0)
                     pred = torch.from_numpy(pred)
                     weight = torch.from_numpy(images['weight'])
                     x0, x1, x2, x3 = pred[0], pred[1], pred[2], pred[3]
-                    weight[..., 0] = args.alpha * x0 + (1 - args.alpha) * weight[..., 0]
-                    weight[..., 1] = args.alpha * x1 + (1 - args.alpha) * weight[..., 1]
-                    weight[..., 2] = args.alpha * x2 + (1 - args.alpha) * weight[..., 2]
-                    weight[..., 3] = args.alpha * x3 + (1 - args.alpha) * weight[..., 3]
+                    weight[..., 0] = args.alpha * x0 + \
+                        (1 - args.alpha) * weight[..., 0]
+                    weight[..., 1] = args.alpha * x1 + \
+                        (1 - args.alpha) * weight[..., 1]
+                    weight[..., 2] = args.alpha * x2 + \
+                        (1 - args.alpha) * weight[..., 2]
+                    weight[..., 3] = args.alpha * x3 + \
+                        (1 - args.alpha) * weight[..., 3]
                     trainloader.dataset.images[idx]['weight'] = weight.numpy()
 
                     # img = Image.fromarray(np.array((weight[..., 1] + weight[..., 2] + weight[..., 3]).cpu().numpy() * 255, dtype=np.uint8))
@@ -238,12 +271,14 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "../model/{}_{}/{}".format(args.exp, args.fold, args.sup_type)
+    snapshot_path = "../model/{}_{}/{}".format(
+        args.exp, args.fold, args.sup_type)
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     if os.path.exists(snapshot_path + '/code'):
         shutil.rmtree(snapshot_path + '/code')
-    shutil.copytree('.', snapshot_path + '/code', shutil.ignore_patterns(['.git', '__pycache__']))
+    shutil.copytree('.', snapshot_path + '/code',
+                    shutil.ignore_patterns(['.git', '__pycache__']))
 
     logging.basicConfig(filename=snapshot_path+"/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')

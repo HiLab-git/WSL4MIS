@@ -26,11 +26,20 @@ from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
 from val_2D import test_single_volume, test_single_volume_ds
 
+
+def intra_class_variance(prob, img):
+    mean_std = torch.std(img * prob, dim=[2,3])
+    return mean_std.mean()
+
+def inter_class_variance(prob, img):
+    mean_std = torch.std(torch.mean(img * prob, dim=[2,3]), dim=1)
+    return mean_std.mean()
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default='../data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC_pCE_Entropy_Mini', help='experiment_name')
+                    default='ACDC_pCE_Inter&Intra_Class', help='experiment_name')
 parser.add_argument('--fold', type=str,
                     default='fold1', help='cross validation')
 parser.add_argument('--sup_type', type=str,
@@ -50,8 +59,15 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
 parser.add_argument('--seed', type=int,  default=2022, help='random seed')
+parser.add_argument('--consistency', type=float,
+                    default=0.1, help='consistency')
+parser.add_argument('--consistency_rampup', type=float,
+                    default=200.0, help='consistency_rampup')
 args = parser.parse_args()
 
+def get_current_consistency_weight(epoch):
+    # Consistency ramp-up from https://arxiv.org/abs/1610.02242
+    return args.consistency * ramps.sigmoid_rampup(epoch, args.consistency_rampup)
 
 def train(args, snapshot_path):
     base_lr = args.base_lr
@@ -63,8 +79,7 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path,
-                          fold=args.fold, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -96,10 +111,11 @@ def train(args, snapshot_path):
 
             outputs = model(volume_batch)
             outputs_soft = torch.softmax(outputs, dim=1)
-            ent_loss = losses.entropy_loss(outputs_soft, C=4)
+            consistency_loss = inter_class_variance(outputs_soft, volume_batch) - intra_class_variance(outputs_soft, volume_batch)
+            consistency_weight = get_current_consistency_weight(iter_num//150)
 
             loss_ce = ce_loss(outputs, label_batch[:].long())
-            loss = loss_ce + 0.1 * ent_loss
+            loss = loss_ce + consistency_weight * consistency_loss
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

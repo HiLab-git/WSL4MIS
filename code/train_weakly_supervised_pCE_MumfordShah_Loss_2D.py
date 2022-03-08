@@ -63,7 +63,8 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path,  fold=args.fold, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path,
+                          fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
@@ -112,7 +113,8 @@ def train(args, snapshot_path):
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
-            writer.add_scalar('info/loss_mumfordshah', loss_mumfordshah, iter_num)
+            writer.add_scalar('info/loss_mumfordshah',
+                              loss_mumfordshah, iter_num)
 
             logging.info(
                 'iteration %d : loss : %f, loss_ce: %f, loss_mumfordshah: %f' %

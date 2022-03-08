@@ -24,14 +24,15 @@ class BaseDataSets(Dataset):
         self.num = num
         self.labeled_type = labeled_type
         train_ids, test_ids = self._get_fold_ids(fold)
-        all_labeled_ids = ["patient{:0>3}".format(10 * i) for i in range(1, 11)]
+        all_labeled_ids = ["patient{:0>3}".format(
+            10 * i) for i in range(1, 11)]
         if self.split == 'train':
             self.all_slices = os.listdir(
                 self._base_dir + "/ACDC_training_slices")
             self.sample_list = []
             labeled_ids = [i for i in all_labeled_ids if i in train_ids]
             unlabeled_ids = [i for i in train_ids if i not in labeled_ids]
-            if self.labeled_type=="labeled":
+            if self.labeled_type == "labeled":
                 print("Labeled patients IDs", labeled_ids)
                 for ids in labeled_ids:
                     new_data_list = list(filter(lambda x: re.match(
@@ -137,7 +138,8 @@ def random_rot_flip(image, label):
 def random_rotate(image, label, cval):
     angle = np.random.randint(-20, 20)
     image = ndimage.rotate(image, angle, order=0, reshape=False)
-    label = ndimage.rotate(label, angle, order=0, reshape=False, mode="constant", cval=cval)
+    label = ndimage.rotate(label, angle, order=0,
+                           reshape=False, mode="constant", cval=cval)
     return image, label
 
 
