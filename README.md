@@ -1,5 +1,5 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. We also investigated the comprehensive results on the ACDC dataset on this [Tech Report](https://github.com/Luoxd1996/WSL4MIS/WSL4MIS-Tech-Report.pdf).　If you use this codebase in your research, please cite the following works:
+* This project was originally developed for our previous works **WORD**[[Paper](https://arxiv.org/pdf/2111.02403.pdf) & [Dataset](https://github.com/HiLab-git/WORD)]. We also investigated the comprehensive results on the ACDC dataset on this [Tech Report](https://arxiv.org/abs/2203.02106). If you use this codebase in your research, please cite the following works:
 
 		@article{luo2022scribbleseg,
 		title={Scribble-Supervised Medical Image Segmentation via Dual-Branch Network and Dynamically Mixed Pseudo Labels Supervision},
@@ -23,7 +23,7 @@
 * The ACDC dataset with mask annotations can be downloaded from: [ACDC](https://www.creatis.insa-lyon.fr/Challenge/acdc/databases.html).
 * The Scribble annotations of ACDC can be downloaded from: [Scribble](https://gvalvano.github.io/wss-multiscale-adversarial-attention-gates/data).
 * The data processing code in [Here](https://github.com/Luoxd1996/WSL4MIS/blob/main/code/dataloaders/acdc_data_processing.py)  the pre-processed ACDC data in [Here](https://github.com/HiLab-git/WSL4MIS/tree/main/data/ACDC).
-* To simulate the scribble annotation for other datasets, we further provide the simulation code [Here](https://github.com/HiLab-git/WSL4MIS/blob/main/code/scribbles_generator.py).
+* **To simulate the scribble annotation for other datasets, we further provide the simulation code at [Here](https://github.com/HiLab-git/WSL4MIS/blob/main/code/scribbles_generator.py)**.
 # Requirements
 Some important required packages include:
 * [Pytorch][torch_link] version >=0.4.1.
