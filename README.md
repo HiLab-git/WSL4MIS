@@ -1,11 +1,12 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project was originally developed for our two previous works **[WORD](https://arxiv.org/pdf/2111.02403.pdf)** and **[WSL4MIS](https://arxiv.org/abs/2203.02106)** (**MICCAI2022, early accept & student travel award**). If you use this project in your research, please cite the following works:
+* This project was originally developed for our two previous works **[WORD](https://arxiv.org/pdf/2111.02403.pdf)** and **[WSL4MIS](https://arxiv.org/abs/2203.02106)** (**MICCAI2022, early accept & Student Travel Award**). If you use this project in your research, please cite the following works:
 
 		@article{luo2022scribbleseg,
 		title={Scribble-Supervised Medical Image Segmentation via Dual-Branch Network and Dynamically Mixed Pseudo Labels Supervision},
 		author={Xiangde Luo, Minhao Hu, Wenjun Liao, Shuwei Zhai, Tao Song, Guotai Wang, Shaoting Zhang},
-		journal={MICCAI},
-		year={2022}}
+		journal={Medical Image Computing and Computer Assisted Intervention -- MICCAI 2022},
+		year={2022},
+		pages={528--538}}
 		
 		@article{luo2021word,
 		title={{WORD}: A large scale dataset, benchmark and clinical applicable study for abdominal organ segmentation from CT image},
@@ -19,6 +20,8 @@
 		howpublished={\url{https://github.com/Luoxd1996/WSL4MIS}},
 		year={2021}}
 		
+* A re-implementation of this work based on the [PyMIC](https://github.com/HiLab-git/PyMIC) can be found here ([WSLDMPLS](https://github.com/HiLab-git/PyMIC_examples/tree/main/seg_wsl/ACDC)).
+
 # Dataset
 * The ACDC dataset with mask annotations can be downloaded from: [ACDC](https://www.creatis.insa-lyon.fr/Challenge/acdc/databases.html).
 * The Scribble annotations of ACDC can be downloaded from: [Scribble](https://gvalvano.github.io/wss-multiscale-adversarial-attention-gates/data).
@@ -40,7 +43,7 @@ Follow official guidance to install [Pytorch][torch_link].
 
 1. Clone this project.
 ```
-git clone https://github.com/Luoxd1996/WSL4MIS
+git clone https://github.com/HiLab-git/WSL4MIS
 cd WSL4MIS
 ```
 2. Data pre-processing os used or the processed data.
