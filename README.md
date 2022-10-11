@@ -1,5 +1,5 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project was originally developed for our two previous works **[WORD](https://arxiv.org/pdf/2111.02403.pdf)** (**MedIA2022**) and **[WSL4MIS](https://arxiv.org/abs/2203.02106)** (**MICCAI2022, early accept & Student Travel Award**). If you use this project in your research, please cite the following works:
+* This project was originally developed for our two previous works **[WORD](https://www.sciencedirect.com/science/article/pii/S1361841522002705)** (**MedIA2022**) and **[WSL4MIS](https://link.springer.com/chapter/10.1007/978-3-031-16431-6_50)** (**MICCAI2022**). If you use this project in your research, please cite the following works:
 
 		@article{luo2022scribbleseg,
 		title={Scribble-Supervised Medical Image Segmentation via Dual-Branch Network and Dynamically Mixed Pseudo Labels Supervision},
