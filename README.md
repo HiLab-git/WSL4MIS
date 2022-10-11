@@ -1,5 +1,5 @@
 # Weakly-supervised learning for medical image segmentation (WSL4MIS).
-* This project was originally developed for our two previous works **[WORD](https://arxiv.org/pdf/2111.02403.pdf)** and **[WSL4MIS](https://arxiv.org/abs/2203.02106)** (**MICCAI2022, early accept & Student Travel Award**). If you use this project in your research, please cite the following works:
+* This project was originally developed for our two previous works **[WORD](https://arxiv.org/pdf/2111.02403.pdf)** (**MedIA2022**) and **[WSL4MIS](https://arxiv.org/abs/2203.02106)** (**MICCAI2022, early accept & Student Travel Award**). If you use this project in your research, please cite the following works:
 
 		@article{luo2022scribbleseg,
 		title={Scribble-Supervised Medical Image Segmentation via Dual-Branch Network and Dynamically Mixed Pseudo Labels Supervision},
@@ -8,11 +8,14 @@
 		year={2022},
 		pages={528--538}}
 		
-		@article{luo2021word,
+		@article{luo2022word,
 		title={{WORD}: A large scale dataset, benchmark and clinical applicable study for abdominal organ segmentation from CT image},
-		author={Xiangde Luo, Wenjun Liao, Jianghong Xiao, Tao Song, Xiaofan Zhang, Kang Li, Dimitris N. Metaxas, Guotai Wang, and Shaoting Zhang},
-		journal={arXiv preprint arXiv:2111.02403},
-		year={2021}}
+		author={Xiangde Luo, Wenjun Liao, Jianghong Xiao, Jieneng Chen, Tao Song, Xiaofan Zhang, Kang Li, Dimitris N. Metaxas, Guotai Wang, and Shaoting Zhang},
+		journal={Medical Image Analysis},
+		volume={82},
+		pages={102642},
+		year={2022},
+		publisher={Elsevier}}
 		
 		@misc{wsl4mis2020,
 		title={{WSL4MIS}},
