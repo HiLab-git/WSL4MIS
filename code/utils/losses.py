@@ -305,5 +305,5 @@ class MumfordShah_Loss(nn.Module):
 
     def forward(self, image, prediction):
         loss_level = self.levelsetLoss(image, prediction)
-        loss_tv = self.gradientLoss2d(image)
+        loss_tv = self.gradientLoss2d(prediction)
         return loss_level + loss_tv
