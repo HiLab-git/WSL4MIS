@@ -53,7 +53,7 @@ parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
 
 """选择GPU ID"""
-gpu_list = [4] #[0,1]
+gpu_list = [7] #[0,1]
 gpu_list_str = ','.join(map(str, gpu_list))
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_list_str)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

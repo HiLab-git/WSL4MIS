@@ -29,9 +29,15 @@ from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
 from val_2D import test_single_volume
 
+"""选择GPU ID"""
+gpu_list = [4] #[0,1]
+gpu_list_str = ','.join(map(str, gpu_list))
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_list_str)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/ACDC', help='Name of Experiment')
+                    default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
                     default='ACDC_Semi/Uncertainty_Aware_Mean_Teacher', help='experiment_name')
 parser.add_argument('--model', type=str,
@@ -42,7 +48,7 @@ parser.add_argument('--sup_type', type=str,
                     default='label', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=12,
+parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -55,7 +61,7 @@ parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 
 # label and unlabel
-parser.add_argument('--labeled_bs', type=int, default=6,
+parser.add_argument('--labeled_bs', type=int, default=12,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4,
                     help='labeled data')
@@ -282,14 +288,10 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "../model/{}_{}/{}".format(
-        args.exp, args.fold, args.sup_type)
+    snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}".format(args.exp, args.fold, args.sup_type)
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    if os.path.exists(snapshot_path + '/code'):
-        shutil.rmtree(snapshot_path + '/code')
-    shutil.copytree('.', snapshot_path + '/code',
-                    shutil.ignore_patterns(['.git', '__pycache__']))
+
 
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
