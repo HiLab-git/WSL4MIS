@@ -41,7 +41,7 @@ parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=48,
+parser.add_argument('--batch_size', type=int, default=24,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -53,7 +53,7 @@ parser.add_argument('--seed', type=int,  default=2022, help='random seed')
 args = parser.parse_args()
 
 """选择GPU ID"""
-gpu_list = [7] #[0,1]
+gpu_list = [6] #[0,1]
 gpu_list_str = ','.join(map(str, gpu_list))
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_list_str)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -69,8 +69,7 @@ def train(args, snapshot_path):
     db_train = BaseDataSets(base_dir=args.root_path, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]), fold=args.fold, sup_type=args.sup_type)
-    db_val = BaseDataSets(base_dir=args.root_path,
-                          fold=args.fold, split="val")
+    db_val = BaseDataSets(base_dir=args.root_path,fold=args.fold, split="val")
 
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)

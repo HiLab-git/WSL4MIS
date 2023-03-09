@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.utils import make_grid
 from tqdm import tqdm
-
+                        
 from dataloaders import utils
 from dataloaders.dataset import BaseDataSets, RandomGenerator
 from networks.net_factory import net_factory
@@ -28,11 +28,11 @@ from val_2D import test_single_volume, test_single_volume_ds
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/ACDC', help='Name of Experiment')
+                    default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
                     default='ACDC', help='experiment_name')
 parser.add_argument('--fold', type=str,
-                    default='fold5', help='cross validation')
+                    default='fold1', help='cross validation')
 parser.add_argument('--sup_type', type=str,
                     default='label', help='supervision type')
 parser.add_argument('--model', type=str,
@@ -98,9 +98,9 @@ def train(args, snapshot_path):
             outputs_soft = torch.softmax(outputs, dim=1)
 
             loss_ce = ce_loss(outputs, label_batch[:].long())
-            loss = 0.5 * (loss_ce + dice_loss(outputs_soft,
-                          label_batch.unsqueeze(1)))
-            # loss = loss_ce
+            # loss = 0.5 * (loss_ce + dice_loss(outputs_soft,
+            #               label_batch.unsqueeze(1)))
+            loss = loss_ce
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -191,14 +191,11 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "../model/{}_{}/{}".format(
+    snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}".format(
         args.exp, args.fold, args.sup_type)
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    if os.path.exists(snapshot_path + '/code'):
-        shutil.rmtree(snapshot_path + '/code')
-    shutil.copytree('.', snapshot_path + '/code',
-                    shutil.ignore_patterns(['.git', '__pycache__']))
+
 
     logging.basicConfig(filename=snapshot_path+"/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
