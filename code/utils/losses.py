@@ -307,3 +307,33 @@ class MumfordShah_Loss(nn.Module):
         loss_level = self.levelsetLoss(image, prediction)
         loss_tv = self.gradientLoss2d(prediction)
         return loss_level + loss_tv
+
+def scc_loss(cos_sim,tau,lb_center_12_bg,
+             lb_center_12_a,un_center_12_bg, 
+             un_center_12_a,lb_center_12_b,lb_center_12_c,un_center_12_b,un_center_12_c):
+    
+    loss_intra_bg = torch.exp((cos_sim(lb_center_12_bg, un_center_12_bg))/tau)
+    loss_intra_la = torch.exp((cos_sim(lb_center_12_a, un_center_12_a))/tau)
+    loss_intra_lb = torch.exp((cos_sim(lb_center_12_b, un_center_12_b))/tau)
+    loss_intra_lc = torch.exp((cos_sim(lb_center_12_c, un_center_12_c))/tau)
+
+
+    loss_inter_bg_la = torch.exp((cos_sim(lb_center_12_bg, un_center_12_a))/tau)
+    loss_inter_bg_lb = torch.exp((cos_sim(lb_center_12_bg, un_center_12_b))/tau)
+    loss_inter_bg_lc = torch.exp((cos_sim(lb_center_12_bg, un_center_12_c))/tau)
+
+
+    loss_inter_la_bg = torch.exp((cos_sim(lb_center_12_a, un_center_12_bg))/tau)
+    loss_inter_lb_bg = torch.exp((cos_sim(lb_center_12_b, un_center_12_bg))/tau)
+    loss_inter_lc_bg = torch.exp((cos_sim(lb_center_12_c, un_center_12_bg))/tau)
+
+
+    loss_contrast_bg = -torch.log(loss_intra_bg)+torch.log(loss_inter_bg_la)+torch.log(loss_inter_bg_lb)+torch.log(loss_inter_bg_lc)
+    loss_contrast_la = -torch.log(loss_intra_la)+torch.log(loss_inter_la_bg)+torch.log(loss_inter_lb_bg)+torch.log(loss_inter_lc_bg)
+    loss_contrast_lb = -torch.log(loss_intra_lb)+torch.log(loss_inter_la_bg)+torch.log(loss_inter_lb_bg)+torch.log(loss_inter_lc_bg)
+    loss_contrast_lc = -torch.log(loss_intra_lc)+torch.log(loss_inter_la_bg)+torch.log(loss_inter_lb_bg)+torch.log(loss_inter_lc_bg)
+    
+    loss_contrast = torch.mean(loss_contrast_bg+loss_contrast_la+loss_contrast_lb+loss_contrast_lc)
+    return loss_contrast
+
+

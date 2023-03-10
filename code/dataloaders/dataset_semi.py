@@ -110,11 +110,11 @@ class BaseDataSets(Dataset):
             h5f = h5py.File(self._base_dir +
                             "/ACDC_training_volumes/{}".format(case), 'r')
         image = h5f['image'][:]
-        label = h5f['label'][:]
+        label = h5f['scribble'][:]
         sample = {'image': image, 'label': label}
         if self.split == "train":
             image = h5f['image'][:]
-            label = h5f[self.sup_type][:]
+            label = h5f['scribble'][:]
             sample = {'image': image, 'label': label}
             sample = self.transform(sample)
         else:

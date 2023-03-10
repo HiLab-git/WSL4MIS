@@ -22,6 +22,7 @@ from mmseg.ops import resize
 
 from networks.mix_transformer import MixVisionTransformer,SegFormerHead
 from functools import partial
+# from networks.decode_head import Classification_head
 # model settings
 norm_cfg = dict(type='SyncBN', requires_grad=True)
 # dict(type='SyncBN', requires_grad=True)
@@ -72,7 +73,7 @@ class SwinUnet(nn.Module):
                                 drop_path_rate=config.MODEL.DROP_PATH_RATE,
                                 stride=[4,2,2,1],
                             )
-                                
+        # self.Classification_head=Classification_head(num_classes=self.num_classes,ndf=64)                               
                             
 # num_heads=[1, 2, 5, 8], [32, 64, 160, 256],
 # config.MODEL.SWIN.EMBED_DIM,
@@ -133,13 +134,14 @@ class SwinUnet(nn.Module):
 
         # logits = self.swin_unet(x)
         logits = self.mix_transformer(x)
-        logits=self.seg_head(logits[0])
+        logits_=self.seg_head(logits[0])
+
         out = resize(
-            input=logits,
+            input=logits_[0],
             size=x.shape[2:],
             mode='bilinear',
             align_corners=False)
-        return out
+        return out,logits_[1],logits_[2]
 
     # def load_from(self, config):
     #     pretrained_path = config.MODEL.PRETRAIN_CKPT
@@ -164,9 +166,7 @@ class SwinUnet(nn.Module):
     #         full_dict = copy.deepcopy(pretrained_dict)
     #         for k, v in pretrained_dict.items():
     #             if "layers." in k:
-    #                 current_layer_num = 3-int(k[7:8])
-    #                 current_k = "layers_up." + str(current_layer_num) + k[8:]
-    #                 full_dict.update({current_k:v})
+    #                 current_layer_num =x_classurrent_k:v})
     #         for k in list(full_dict.keys()):
     #             if k in model_dict:
     #                 if full_dict[k].shape != model_dict[k].shape:

@@ -234,3 +234,52 @@ class BaseDecodeHead(nn.Module, metaclass=ABCMeta):
             ignore_index=self.ignore_index)
         # loss['acc_seg'] = accuracy(seg_logit, seg_label)
         return seg_logit
+    
+
+# class Classification_head(nn.Module):
+
+#     def __init__(self, embed_dim,num_classes, ndf=64, out_channel=1):
+#         super(Classification_head, self).__init__()
+#         # downsample 16
+#         self.conv0 = nn.Conv3d(1, ndf, kernel_size=4, stride=2, padding=1)
+#         self.conv1 = nn.Conv3d(ndf, ndf*2, kernel_size=4, stride=2, padding=1)
+#         self.conv2 = nn.Conv3d(ndf*2, ndf*4, kernel_size=4, stride=2, padding=1)
+#         self.conv3 = nn.Conv3d(ndf*4, ndf*8, kernel_size=4, stride=2, padding=1)
+#         self.avgpool = nn.AvgPool3d((7, 7, 5))
+#         # self.avgpool = nn.AvgPool3d((5, 7, 7))
+#         # self.avgpool = nn.AvgPool3d((5, 16, 16))
+#         self.fc1 = nn.Linear(ndf*8, 512)
+#         self.fc2 = nn.Linear(512, num_classes)
+
+#         self.leaky_relu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
+#         self.dropout = nn.Dropout3d(0.5)
+#         self.Softmax = nn.Softmax()
+#         self.out = nn.Conv3d(ndf*2,num_classes,kernel_size=1)
+
+#         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()        
+
+#     def forward(self, map):
+#         batch_size = map.shape[0]
+#         map_feature = self.conv0(map)#(2,112,112,80)->(64,56,56,40)
+#         x = self.leaky_relu(map_feature)
+#         x = self.dropout(x)
+
+#         x = self.conv1(x)#(64,56,56,40)->(128,28,28,20)
+#         x = self.leaky_relu(x)
+#         x = self.dropout(x)
+#         #x = self.out(x)
+        
+#         x = self.conv2(x)#(128,28,28,20)->(256,14,14,10)
+#         x = self.leaky_relu(x)
+#         x = self.dropout(x)
+        
+#         x = self.conv3(x)#(256,14,14,10)->(512,7,7,5)
+#         x = self.leaky_relu(x)
+        
+#         x = self.avgpool(x)#(512)
+
+#         x = x.view(batch_size, -1)
+#         x = self.fc1(x)
+#         x = self.fc2(x)
+        
+#         return x    
