@@ -20,11 +20,14 @@ from scipy import ndimage
 from networks.swin_transformer_unet_skip_expand_decoder_sys import SwinTransformerSys
 from mmseg.ops import resize
 
-from networks.mix_transformer import MixVisionTransformer,SegFormerHead
+from networks.mix_transformer import MixVisionTransformer
 from functools import partial
+from networks.head import SegFormerHead
+from functools import partial
+import pickle
 # from networks.decode_head import Classification_head
 # model settings
-norm_cfg = dict(type='SyncBN', requires_grad=True)
+norm_cfg = dict(type='BN', requires_grad=True)
 # dict(type='SyncBN', requires_grad=True)
 
 logger = logging.getLogger(__name__)
@@ -124,6 +127,12 @@ class SwinUnet(nn.Module):
                             decoder_params=dict(embed_dim=256),
                             loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0))
         
+        # self.encoder = getattr(mix_transformer, backbone)(stride=self.stride)
+        # self.in_channels = self.encoder.embed_dims
+
+        ## initilize encoder
+        # if pretrained:
+
 
 
 
@@ -131,8 +140,30 @@ class SwinUnet(nn.Module):
     def forward(self, x):
         if x.size()[1] == 1:
             x = x.repeat(1,3,1,1)
+        # pickle.load = partial(pickle.load, encoding="latin1")
+        # pickle.Unpickler = partial(pickle.Unpickler, encoding="latin1")
+        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth', map_location=lambda storage, loc: storage, pickle_module=pickle)            
+        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth')
+        # state_dict.pop('head.weight')
+        # state_dict.pop('head.bias')
+        # device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
+        # self.mix_transformer.load_state_dict(state_dict,)
+        
+        # pickle.load = partial(pickle.load, encoding="latin1")
+        # pickle.Unpickler = partial(pickle.Unpickler, encoding="latin1")    
+        # # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        # # 
+        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth', map_location=lambda storage, loc: storage, pickle_module=pickle)     
+        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth')
+        # model_dict=self.mix_transformer.state_dict() 
+        # state_dict.pop('head.weight')
+        # state_dict.pop('head.bias')
+        # state_dict =  {k: v for k, v in state_dict.items() if k in model_dict} 
+        # model_dict.update(state_dict)
 
+        # self.mix_transformer.load_state_dict(state_dict)#,strict=False
         # logits = self.swin_unet(x)
+
         logits = self.mix_transformer(x)
         logits_=self.seg_head(logits[0])
 
@@ -142,6 +173,9 @@ class SwinUnet(nn.Module):
             mode='bilinear',
             align_corners=False)
         return out,logits_[1],logits_[2]
+
+
+
 
     # def load_from(self, config):
     #     pretrained_path = config.MODEL.PRETRAIN_CKPT
@@ -166,7 +200,9 @@ class SwinUnet(nn.Module):
     #         full_dict = copy.deepcopy(pretrained_dict)
     #         for k, v in pretrained_dict.items():
     #             if "layers." in k:
-    #                 current_layer_num =x_classurrent_k:v})
+    #                 current_layer_num = 3-int(k[7:8])
+    #                 current_k = "layers_up." + str(current_layer_num) + k[8:]
+    #                 full_dict.update({current_k:v})
     #         for k in list(full_dict.keys()):
     #             if k in model_dict:
     #                 if full_dict[k].shape != model_dict[k].shape:
@@ -177,4 +213,5 @@ class SwinUnet(nn.Module):
     #         # print(msg)
     #     else:
     #         print("none pretrain")
+ 
  

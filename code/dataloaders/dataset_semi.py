@@ -13,7 +13,24 @@ from scipy.ndimage.interpolation import zoom
 from torch.utils.data import Dataset
 from torch.utils.data.sampler import Sampler
 
-
+def pseudo_label_generator_acdc(data, seed, beta=100, mode='bf'):
+    from skimage.exposure import rescale_intensity
+    from skimage.segmentation import random_walker
+    if 1 not in np.unique(seed) or 2 not in np.unique(seed) or 3 not in np.unique(seed):
+        pseudo_label = np.zeros_like(seed)
+    else:
+        markers = np.ones_like(seed)
+        markers[seed == 4] = 0
+        markers[seed == 0] = 1
+        markers[seed == 1] = 2
+        markers[seed == 2] = 3
+        markers[seed == 3] = 4
+        sigma = 0.35
+        data = rescale_intensity(data, in_range=(-sigma, 1 + sigma),
+                                 out_range=(-1, 1))
+        segmentation = random_walker(data, markers, beta, mode)
+        pseudo_label = segmentation - 1
+    return pseudo_label
 class BaseDataSets(Dataset):
     def __init__(self, base_dir=None, num=4, labeled_type="labeled", split='train', transform=None, fold="fold1", sup_type="label"):
         self._base_dir = base_dir
@@ -24,8 +41,7 @@ class BaseDataSets(Dataset):
         self.num = num
         self.labeled_type = labeled_type
         train_ids, test_ids = self._get_fold_ids(fold)
-        all_labeled_ids = ["patient{:0>3}".format(
-            10 * i) for i in range(1, 11)]
+        all_labeled_ids = ["patient{:0>3}".format(10 * i) for i in range(1, 11)]
         if self.split == 'train':
             self.all_slices = os.listdir(
                 self._base_dir + "/ACDC_training_slices")
@@ -114,7 +130,11 @@ class BaseDataSets(Dataset):
         sample = {'image': image, 'label': label}
         if self.split == "train":
             image = h5f['image'][:]
-            label = h5f['scribble'][:]
+            
+            if self.sup_type == "random_walker":
+                label = pseudo_label_generator_acdc(image, h5f["scribble"][:])
+            else:
+                label = h5f['scribble'][:]
             sample = {'image': image, 'label': label}
             sample = self.transform(sample)
         else:
