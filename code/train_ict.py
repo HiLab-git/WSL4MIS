@@ -29,17 +29,11 @@ from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
 from val_2D import test_single_volume
 
-"""选择GPU ID"""
-gpu_list = [4] #[0,1]
-gpu_list_str = ','.join(map(str, gpu_list))
-os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_list_str)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
                     default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC_Semi/Uncertainty_Aware_Mean_Teacher_scribble', help='experiment_name')
+                    default='ACDC_Semi/ICT_scribble', help='experiment_name')
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
 parser.add_argument('--fold', type=str,
@@ -48,7 +42,7 @@ parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--batch_size', type=int, default=12,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -61,10 +55,13 @@ parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 
 # label and unlabel
-parser.add_argument('--labeled_bs', type=int, default=12,
+parser.add_argument('--labeled_bs', type=int, default=6,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4,
                     help='labeled data')
+parser.add_argument('--ict_alpha', type=int, default=0.2,
+                    help='ict_alpha')
+
 # costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
 parser.add_argument('--consistency_type', type=str,
@@ -75,7 +72,8 @@ parser.add_argument('--consistency_rampup', type=float,
                     default=200.0, help='consistency_rampup')
 args = parser.parse_args()
 
-device = torch.device('cuda:4' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
+
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
     return args.consistency * ramps.sigmoid_rampup(epoch, args.consistency_rampup)
@@ -112,9 +110,10 @@ def train(args, snapshot_path):
     model=model.to(device)
     ema_model=ema_model.to(device)
 
-    db_train_labeled = BaseDataSets(base_dir=args.root_path, num=4, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
-        RandomGenerator(args.patch_size)]),sup_type=args.sup_type)
-    db_train_unlabeled = BaseDataSets(base_dir=args.root_path, num=4, labeled_type="unlabeled", fold=args.fold, split="train", transform=transforms.Compose([
+    db_train_labeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
+        RandomGenerator(args.patch_size)
+    ]))
+    db_train_unlabeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="unlabeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)]))
 
     trainloader_labeled = DataLoader(db_train_labeled, batch_size=args.batch_size//2, shuffle=True,
@@ -136,6 +135,7 @@ def train(args, snapshot_path):
     # dice_loss = losses.DiceLoss(num_classes)
     ce_loss = CrossEntropyLoss(ignore_index=4)
     dice_loss = losses.pDLoss(num_classes, ignore_index=4)
+
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader_labeled)))
 
@@ -150,53 +150,40 @@ def train(args, snapshot_path):
             volume_batch, label_batch = sampled_batch_labeled['image'], sampled_batch_labeled['label']
             volume_batch, label_batch = volume_batch.to(device), label_batch.to(device)
             unlabeled_volume_batch = sampled_batch_unlabeled['image'].to(device)
-            print("Labeled slices: ", sampled_batch_labeled["idx"])
-            print("Unlabeled slices: ", sampled_batch_unlabeled["idx"])
+            
+            # ICT mix factors
+            ict_mix_factors = np.random.beta(
+                args.ict_alpha, args.ict_alpha, size=(args.labeled_bs//2, 1, 1, 1))
+            ict_mix_factors = torch.tensor(
+                ict_mix_factors, dtype=torch.float).to(device)
+            unlabeled_volume_batch_0 = unlabeled_volume_batch[0:args.labeled_bs//2, ...]
+            unlabeled_volume_batch_1 = unlabeled_volume_batch[args.labeled_bs//2:, ...]
 
-            noise = torch.clamp(torch.randn_like(
-                unlabeled_volume_batch) * 0.1, -0.2, 0.2)
-            ema_inputs = unlabeled_volume_batch + noise
-
-            outputs = model(volume_batch)
+            # Mix images
+            batch_ux_mixed = unlabeled_volume_batch_0 * \
+                (1.0 - ict_mix_factors) + \
+                unlabeled_volume_batch_1 * ict_mix_factors
+            input_volume_batch = torch.cat([volume_batch, batch_ux_mixed], dim=0)
+            outputs = model(input_volume_batch)
             outputs_soft = torch.softmax(outputs, dim=1)
-
-            outputs_unlabeled = model(unlabeled_volume_batch)
-            outputs_unlabeled_soft = torch.softmax(outputs_unlabeled, dim=1)
-
             with torch.no_grad():
-                ema_output = ema_model(ema_inputs)
-            T = 8
-            _, _, w, h = unlabeled_volume_batch.shape
-            volume_batch_r = unlabeled_volume_batch.repeat(2, 1, 1, 1)
-            stride = volume_batch_r.shape[0] // 2
-            preds = torch.zeros([stride * T, num_classes, w, h]).to(device)
-            for i in range(T // 2):
-                ema_inputs = volume_batch_r + \
-                    torch.clamp(torch.randn_like(
-                        volume_batch_r) * 0.1, -0.2, 0.2)
-                with torch.no_grad():
-                    preds[2 * stride * i:2 * stride *
-                          (i + 1)] = ema_model(ema_inputs)
-            preds = F.softmax(preds, dim=1)
-            preds = preds.reshape(T, stride, num_classes, w, h)
-            preds = torch.mean(preds, dim=0)
-            uncertainty = -1.0 * \
-                torch.sum(preds * torch.log(preds + 1e-6), dim=1, keepdim=True)
+                ema_output_ux0 = torch.softmax(
+                    ema_model(unlabeled_volume_batch_0), dim=1)
+                ema_output_ux1 = torch.softmax(
+                    ema_model(unlabeled_volume_batch_1), dim=1)
+                batch_pred_mixed = ema_output_ux0 * \
+                    (1.0 - ict_mix_factors) + ema_output_ux1 * ict_mix_factors
 
-            loss_ce = ce_loss(outputs, label_batch[:].long())
-            loss_dice = dice_loss(outputs_soft, label_batch.unsqueeze(1))
+            loss_ce = ce_loss(outputs[:args.labeled_bs],
+                              label_batch[:args.labeled_bs][:].long())
+            loss_dice = dice_loss(
+                outputs_soft[:args.labeled_bs], label_batch[:args.labeled_bs].unsqueeze(1))
             supervised_loss = 0.5 * (loss_dice + loss_ce)
-            consistency_weight = get_current_consistency_weight(
-                iter_num // 300)
-            consistency_dist = losses.softmax_mse_loss(
-                outputs_unlabeled, ema_output)  # (batch, 2, 112,112,80)
-            threshold = (0.75 + 0.25 * ramps.sigmoid_rampup(iter_num,
-                                                            max_iterations)) * np.log(2)
-            mask = (uncertainty < threshold).float()
-            consistency_loss = torch.sum(
-                mask * consistency_dist) / (2 * torch.sum(mask) + 1e-16)
-
+            consistency_weight = get_current_consistency_weight(iter_num//150)
+            consistency_loss = torch.mean(
+                (outputs_soft[args.labeled_bs:] - batch_pred_mixed) ** 2)
             loss = supervised_loss + consistency_weight * consistency_loss
+
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()

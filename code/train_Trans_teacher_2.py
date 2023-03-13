@@ -22,8 +22,7 @@ from torchvision.utils import make_grid
 from tqdm import tqdm
 import datetime
 from dataloaders import utils
-from dataloaders.dataset_semi import (BaseDataSets, RandomGenerator,
-                                      TwoStreamBatchSampler)
+from dataloaders.dataset_semi import (BaseDataSets, RandomGenerator,TwoStreamBatchSampler)
 from networks.discriminator import FCDiscriminator
 from networks.net_factory import net_factory
 from utils import losses, metrics, ramps
@@ -114,7 +113,7 @@ parser.add_argument("--local_rank", default=os.getenv('LOCAL_RANK', 2), type=int
 args = parser.parse_args()
 config = get_config(args)
 # 
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -203,6 +202,7 @@ def train(args, snapshot_path):
     ce_loss = CrossEntropyLoss(ignore_index=4)
     dice_loss = losses.pDLoss(num_classes, ignore_index=4)
     cos_sim = CosineSimilarity(dim=1,eps=1e-6)
+
     gatecrf_loss = ModelLossSemsegGatedCRF()
     loss_gatedcrf_kernels_desc = [{"weight": 1, "xy": 6, "rgb": 0.1}]
     loss_gatedcrf_radius = 5
@@ -221,99 +221,101 @@ def train(args, snapshot_path):
             sampled_batch_labeled, sampled_batch_unlabeled = data[0], data[1]
 
             volume_batch, label_batch = sampled_batch_labeled['image'], sampled_batch_labeled['label']
+            label_batch_wr = sampled_batch_labeled['random_walker']
+
+            label_batch_wr = label_batch_wr.to(device)
             volume_batch, label_batch = volume_batch.to(device), label_batch.to(device)
             unlabeled_volume_batch = sampled_batch_unlabeled['image'].to(device)
-            # print("Labeled slices: ", sampled_batch_labeled["idx"])
-            # print("Unlabeled slices: ", sampled_batch_unlabeled["idx"])
-            with torch.autograd.set_detect_anomaly(True):
-                noise = torch.clamp(torch.randn_like(
-                    unlabeled_volume_batch) * 0.1, -0.2, 0.2)
-                ema_inputs = unlabeled_volume_batch + noise
-
-                volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
-
-                outputs,logits,logits_ = model(volume_batch)
-                outputs_soft = torch.softmax(outputs, dim=1)
-
-                # outputs_unlabeled,_,_ = model(volume_batch[args.labeled_bs:,...])
-                outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
-
-                with torch.no_grad():
-                    ema_output,ema_logits,ema_logits_  = ema_model(ema_inputs)
-                    ema_output_soft = torch.softmax(ema_output, dim=1)
-                # out_gatedcrf = gatecrf_loss(
-                #     outputs_soft,
-                #     loss_gatedcrf_kernels_desc,
-                #     loss_gatedcrf_radius,
-                #     volume_batch,
-                #     256,
-                #     256,
-                # )["loss"]
-                loss_ce = ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
-                loss_dice =ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())#dice_loss(outputs_soft[:args.labeled_bs,...], label_batch.unsqueeze(1))
-                # supervised_loss = 0.5 * (loss_dice + loss_ce)
-                supervised_loss=loss_ce
-                consistency_weight = get_current_consistency_weight(iter_num // 300)
-                # if iter_num < 1000:
-                #     consistency_loss = 0.0
-                # else:
-                consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft) ** 2)
 
 
-                create_center_1_bg = logits[0].unsqueeze(1)# 4,1,x,y,z->4,2
-                create_center_1_a =  logits[1].unsqueeze(1)
-                create_center_1_b =  logits[2].unsqueeze(1)
-                create_center_1_c =  logits[3].unsqueeze(1)
+            noise = torch.clamp(torch.randn_like(unlabeled_volume_batch) * 0.1, -0.2, 0.2)
+            ema_inputs = unlabeled_volume_batch + noise
+            ema_inputs = torch.cat([volume_batch,ema_inputs],0)
+
+            volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
+
+            outputs,calss,attpred = model(volume_batch)
+
+            outputs_soft = torch.softmax(outputs, dim=1)
+            outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
+
+            with torch.no_grad():
+                ema_output,ema_calss,ema_attpred  = ema_model(ema_inputs)
+                ema_output_soft = torch.softmax(ema_output, dim=1)
+
+            loss_ce = ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
+            loss_dice =ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
+
+
+            loss_ce_wr = ce_loss(outputs[:args.labeled_bs,...], label_batch_wr[:].long())
+            loss_dice_wr= dice_loss(outputs_soft[:args.labeled_bs,...], label_batch_wr.unsqueeze(1))
+            #dice_loss(outputs_soft[:args.labeled_bs,...], label_batch.unsqueeze(1))
+            # supervised_loss = 0.5 * (loss_dice + loss_ce)
+            supervised_loss=loss_ce+loss_dice_wr+loss_ce_wr
 
 
 
-                create_center_2_bg = logits_[0].unsqueeze(1)
-                create_center_2_a =  logits_[1].unsqueeze(1)
-                create_center_2_b =  logits_[2].unsqueeze(1)
-                create_center_2_c =  logits_[3].unsqueeze(1)
-                
-                create_center_soft_1_bg = F.softmax(create_center_1_bg, dim=1)# dims(4,2)
-                create_center_soft_1_a = F.softmax(create_center_1_a, dim=1)
-                create_center_soft_1_b = F.softmax(create_center_1_b, dim=1)
-                create_center_soft_1_c = F.softmax(create_center_1_c, dim=1)
-
-
-                create_center_soft_2_bg = F.softmax(create_center_2_bg, dim=1)# dims(4,2)
-                create_center_soft_2_a = F.softmax(create_center_2_a, dim=1)
-                create_center_soft_2_b = F.softmax(create_center_2_b, dim=1)            
-                create_center_soft_2_c = F.softmax(create_center_2_c, dim=1)
-
-
-                lb_center_12_bg = torch.cat((create_center_soft_1_bg[:args.labeled_bs,...], create_center_soft_2_bg[:args.labeled_bs,...]),dim=0)# 4,2
-                lb_center_12_a = torch.cat((create_center_soft_1_a[:args.labeled_bs,...], create_center_soft_2_a[:args.labeled_bs,...]),dim=0)
-                lb_center_12_b = torch.cat((create_center_soft_1_b[:args.labeled_bs,...], create_center_soft_2_b[:args.labeled_bs,...]),dim=0)            
-                lb_center_12_c = torch.cat((create_center_soft_1_c[:args.labeled_bs,...], create_center_soft_2_c[:args.labeled_bs,...]),dim=0)
-                
-
-                un_center_12_bg = torch.cat((create_center_soft_1_bg[args.labeled_bs:,...], create_center_soft_2_bg[args.labeled_bs:,...]),dim=0)
-                un_center_12_a = torch.cat((create_center_soft_1_a[args.labeled_bs:,...], create_center_soft_2_a[args.labeled_bs:,...]),dim=0)
-                un_center_12_b = torch.cat((create_center_soft_1_b[args.labeled_bs:,...], create_center_soft_2_b[args.labeled_bs:,...]),dim=0)        
-                un_center_12_c = torch.cat((create_center_soft_1_c[args.labeled_bs:,...], create_center_soft_2_c[args.labeled_bs:,...]),dim=0)        
+            #consistency loss
+            consistency_weight = get_current_consistency_weight(iter_num // 300)
+            if iter_num < 1000:
+                consistency_loss = 0.0
+            else:
+                consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft[args.labeled_bs:,...]) ** 2)
+    
             
-                # cosine similarity
-                loss_contrast = losses.scc_loss(cos_sim, args.tau, lb_center_12_bg,
-                                                lb_center_12_a,un_center_12_bg, un_center_12_a,
-                                                lb_center_12_b,lb_center_12_c,un_center_12_b,un_center_12_c)
-
-                if args.consistency!=0:
-                    consistency_weight = get_current_consistency_weight(iter_num//150)
-                    loss = supervised_loss + consistency_weight*loss_contrast+ consistency_weight *consistency_loss#+out_gatedcrf*0.1
-                else:
-                    loss = supervised_loss + args.my_lambda * loss_contrast+ args.my_lambda * consistency_loss#+out_gatedcrf*0.1
+            #aff_loss
+            aff_loss = losses.get_aff_loss(attpred[:args.labeled_bs,...],label_batch_wr)
+            
+            # cosine similarity loss
+            create_center_1_bg = calss[0].unsqueeze(1)# 4,1,x,y,z->4,2
+            create_center_1_a =  calss[1].unsqueeze(1)
+            create_center_1_b =  calss[2].unsqueeze(1)
+            create_center_1_c =  calss[3].unsqueeze(1)
 
 
-                # loss = supervised_loss
-                optimizer.zero_grad()
 
-                # loss.backward(retain_graph=True)
-                loss.backward()
-                optimizer.step()
-                update_ema_variables(model, ema_model, args.ema_decay, iter_num)
+            create_center_2_bg = ema_calss[0].unsqueeze(1)
+            create_center_2_a =  ema_calss[1].unsqueeze(1)
+            create_center_2_b =  ema_calss[2].unsqueeze(1)
+            create_center_2_c =  ema_calss[3].unsqueeze(1)
+            
+            create_center_soft_1_bg = F.softmax(create_center_1_bg, dim=1)# dims(4,2)
+            create_center_soft_1_a = F.softmax(create_center_1_a, dim=1)
+            create_center_soft_1_b = F.softmax(create_center_1_b, dim=1)
+            create_center_soft_1_c = F.softmax(create_center_1_c, dim=1)
+
+
+            create_center_soft_2_bg = F.softmax(create_center_2_bg, dim=1)# dims(4,2)
+            create_center_soft_2_a = F.softmax(create_center_2_a, dim=1)
+            create_center_soft_2_b = F.softmax(create_center_2_b, dim=1)            
+            create_center_soft_2_c = F.softmax(create_center_2_c, dim=1)
+
+
+            lb_center_12_bg = torch.cat((create_center_soft_1_bg[:args.labeled_bs,...], create_center_soft_2_bg[:args.labeled_bs,...]),dim=0)# 4,2
+            lb_center_12_a = torch.cat((create_center_soft_1_a[:args.labeled_bs,...], create_center_soft_2_a[:args.labeled_bs,...]),dim=0)
+            lb_center_12_b = torch.cat((create_center_soft_1_b[:args.labeled_bs,...], create_center_soft_2_b[:args.labeled_bs,...]),dim=0)            
+            lb_center_12_c = torch.cat((create_center_soft_1_c[:args.labeled_bs,...], create_center_soft_2_c[:args.labeled_bs,...]),dim=0)
+            
+
+            un_center_12_bg = torch.cat((create_center_soft_1_bg[args.labeled_bs:,...], create_center_soft_2_bg[args.labeled_bs:,...]),dim=0)
+            un_center_12_a = torch.cat((create_center_soft_1_a[args.labeled_bs:,...], create_center_soft_2_a[args.labeled_bs:,...]),dim=0)
+            un_center_12_b = torch.cat((create_center_soft_1_b[args.labeled_bs:,...], create_center_soft_2_b[args.labeled_bs:,...]),dim=0)        
+            un_center_12_c = torch.cat((create_center_soft_1_c[args.labeled_bs:,...], create_center_soft_2_c[args.labeled_bs:,...]),dim=0)        
+            
+
+
+
+            loss_contrast = losses.scc_loss(cos_sim, args.tau, lb_center_12_bg,
+                                            lb_center_12_a,un_center_12_bg, un_center_12_a,
+                                            lb_center_12_b,lb_center_12_c,un_center_12_b,un_center_12_c)
+
+            loss = supervised_loss+consistency_loss+loss_contrast*args.my_lambda+aff_loss
+            optimizer.zero_grad()
+
+            # loss.backward(retain_graph=True)
+            loss.backward()
+            optimizer.step()
+            update_ema_variables(model, ema_model, args.ema_decay, iter_num)
 
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
             for param_group in optimizer.param_groups:
@@ -425,7 +427,7 @@ if __name__ == "__main__":
     snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    # backup_code(snapshot_path)
+    backup_code(snapshot_path)
 
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')

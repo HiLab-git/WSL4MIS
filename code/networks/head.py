@@ -128,24 +128,24 @@ class SegFormerHead(BaseDecodeHead):
 
         
 
-        outs_class_main = []
-        batch_size = x.shape[0]
+        # outs_class_main = []
+        # batch_size = x.shape[0]
 
-        c2_ = self.pre_linear_pred(c2)
-        for i in (range(0,self.num_classes)):
-            map_feature = self.conv0(c2_[:,i,...].unsqueeze(1))
-            class_1234 = self.leaky_relu(map_feature)
-            class_1234= self.dropout(class_1234)
+        # c2_ = self.pre_linear_pred(c2)
+        # for i in (range(0,self.num_classes)):
+        #     map_feature = self.conv0(c2_[:,i,...].unsqueeze(1))
+        #     class_1234 = self.leaky_relu(map_feature)
+        #     class_1234= self.dropout(class_1234)
 
-            # class_1234 = self.conv1(class_1234)
-            # class_1234= self.leaky_relu(class_1234)
-            # class_1234 = self.dropout(class_1234)
+        #     # class_1234 = self.conv1(class_1234)
+        #     # class_1234= self.leaky_relu(class_1234)
+        #     # class_1234 = self.dropout(class_1234)
 
-            class_1234 = self.avgpool(class_1234)
-            class_1234 = class_1234.view(batch_size,-1)
-            class_1234 = self.fc3(class_1234)
-            class_1234 = self.fc4(class_1234)            
+        #     class_1234 = self.avgpool(class_1234)
+        #     class_1234 = class_1234.view(batch_size,-1)
+        #     class_1234 = self.fc3(class_1234)
+        #     class_1234 = self.fc4(class_1234)            
 
-            outs_class_main.append(class_1234)
+        #     outs_class_main.append(class_1234)
 
-        return x,outs_class,outs_class_main
+        return x,outs_class

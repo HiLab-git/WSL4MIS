@@ -336,4 +336,24 @@ def scc_loss(cos_sim,tau,lb_center_12_bg,
     loss_contrast = torch.mean(loss_contrast_bg+loss_contrast_la+loss_contrast_lb+loss_contrast_lc)
     return loss_contrast
 
+def get_aff_loss(inputs, targets):
 
+    pos_label = (targets == 1).type(torch.int16)
+    pos_label2 = (targets == 2).type(torch.int16)
+    pos_label3 = (targets == 3).type(torch.int16)
+
+    pos_count = pos_label.sum() + 1
+    pos_count2 = pos_label2.sum() + 1
+    pos_count3 = pos_label3.sum() + 1
+
+    neg_label = (targets == 0).type(torch.int16)
+    neg_count = neg_label.sum() + 1
+    #inputs = torch.sigmoid(input=inputs)
+
+    pos_loss = torch.sum(pos_label * (1 - inputs)) / pos_count
+    pos_loss2 = torch.sum(pos_label2 * (1 - inputs)) / pos_count2   
+    pos_loss3 = torch.sum(pos_label3 * (1 - inputs)) / pos_count3 
+
+    neg_loss = torch.sum(neg_label * (inputs)) / neg_count
+
+    return 0.5 * (pos_loss+pos_loss2+pos_loss3) + 0.5 * neg_loss

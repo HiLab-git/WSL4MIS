@@ -13,7 +13,7 @@ from os.path import join as pjoin
 import torch
 import torch.nn as nn
 import numpy as np
-
+import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 from torch.nn.modules.utils import _pair
 from scipy import ndimage
@@ -76,42 +76,6 @@ class SwinUnet(nn.Module):
                                 drop_path_rate=config.MODEL.DROP_PATH_RATE,
                                 stride=[4,2,2,1],
                             )
-        # self.Classification_head=Classification_head(num_classes=self.num_classes,ndf=64)                               
-                            
-# num_heads=[1, 2, 5, 8], [32, 64, 160, 256],
-# config.MODEL.SWIN.EMBED_DIM,
-# config.MODEL.SWIN.MLP_RATIO,config.MODEL.SWIN.NUM_HEADS,  
-        # self.segformerhead = SegFormerHead(in_channels=,channels=,
-        #          num_classes=self.num_classes,
-        #          dropout_ratio=0.1,
-        #          conv_cfg=None,
-        #          norm_cfg=None,
-        #          act_cfg=dict(type='ReLU'),
-        #          in_index=-1,
-        #          input_transform=None,
-        #          decoder_params=None,
-        #          ignore_index=255,
-        #          sampler=None,
-        #          align_corners=False)
-    # def __init__(self,
-    #              in_channels,
-    #              channels,
-    #              *,
-    #              num_classes,
-    #              dropout_ratio=0.1,
-    #              conv_cfg=None,
-    #              norm_cfg=None,
-    #              act_cfg=dict(type='ReLU'),
-    #              in_index=-1,
-    #              input_transform=None,
-    #              loss_decode=dict(
-    #                  type='CrossEntropyLoss',
-    #                  use_sigmoid=False,
-    #                  loss_weight=1.0),
-    #              decoder_params=None,
-    #              ignore_index=255,
-    #              sampler=None,
-    #              align_corners=False)
         
 
         self.seg_head=SegFormerHead(
@@ -127,13 +91,10 @@ class SwinUnet(nn.Module):
                             decoder_params=dict(embed_dim=256),
                             loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0))
         
-        # self.encoder = getattr(mix_transformer, backbone)(stride=self.stride)
-        # self.in_channels = self.encoder.embed_dims
+        self.attn_proj = nn.Conv2d(in_channels=16, out_channels=1, kernel_size=1, bias=True)        
+        nn.init.kaiming_normal_(self.attn_proj.weight, a=np.sqrt(5), mode="fan_out")    
 
-        ## initilize encoder
-        # if pretrained:
-
-
+        self.classifier = nn.Conv2d(in_channels=256, out_channels=self.num_classes-1, kernel_size=1, bias=False)    
 
 
                 
@@ -143,75 +104,32 @@ class SwinUnet(nn.Module):
         # pickle.load = partial(pickle.load, encoding="latin1")
         # pickle.Unpickler = partial(pickle.Unpickler, encoding="latin1")
         # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth', map_location=lambda storage, loc: storage, pickle_module=pickle)            
-        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth')
-        # state_dict.pop('head.weight')
-        # state_dict.pop('head.bias')
-        # device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
-        # self.mix_transformer.load_state_dict(state_dict,)
+        state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth')
+        state_dict.pop('head.weight')
+        state_dict.pop('head.bias')
+        self.mix_transformer.load_state_dict(state_dict,)
         
-        # pickle.load = partial(pickle.load, encoding="latin1")
-        # pickle.Unpickler = partial(pickle.Unpickler, encoding="latin1")    
-        # # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        # # 
-        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth', map_location=lambda storage, loc: storage, pickle_module=pickle)     
-        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth')
-        # model_dict=self.mix_transformer.state_dict() 
-        # state_dict.pop('head.weight')
-        # state_dict.pop('head.bias')
-        # state_dict =  {k: v for k, v in state_dict.items() if k in model_dict} 
-        # model_dict.update(state_dict)
-
-        # self.mix_transformer.load_state_dict(state_dict)#,strict=False
-        # logits = self.swin_unet(x)
-
         logits = self.mix_transformer(x)
+        _attns =logits[1]
+        attn_cat  = torch.cat(_attns[-2:], dim=1)#.detach()
+        attn_cat  = attn_cat + attn_cat.permute(0, 1, 3, 2)
+        attn_pred = self.attn_proj(attn_cat)
+        attn_pred = torch.sigmoid(attn_pred)#[:,0,...]
+
+
+
         logits_=self.seg_head(logits[0])
+        calss=logits_[1]
 
-        out = resize(
-            input=logits_[0],
-            size=x.shape[2:],
-            mode='bilinear',
-            align_corners=False)
-        return out,logits_[1],logits_[2]
+        out=F.interpolate(logits_[0], size=x.shape[2:], mode='bilinear', align_corners=False)
+        # out = resize(input=logits_[0],ize=x.shape[2:], mode='bilinear',align_corners=False)
+
+        # affinity_ = torch.softmax(torch.matmul(attn_pred, torch.softmax(out, dim=-1)),dim=-1)   
+
+        return out,calss,attn_pred
 
 
 
 
-    # def load_from(self, config):
-    #     pretrained_path = config.MODEL.PRETRAIN_CKPT
-    #     if pretrained_path is not None:
-    #         print("pretrained_path:{}".format(pretrained_path))
-    #         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    #         pretrained_dict = torch.load(pretrained_path, map_location=device)
-    #         if "model"  not in pretrained_dict:
-    #             print("---start load pretrained modle by splitting---")
-    #             pretrained_dict = {k[17:]:v for k,v in pretrained_dict.items()}
-    #             for k in list(pretrained_dict.keys()):
-    #                 if "output" in k:
-    #                     print("delete key:{}".format(k))
-    #                     del pretrained_dict[k]
-    #             msg = self.swin_unet.load_state_dict(pretrained_dict,strict=False)
-    #             # print(msg)
-    #             return
-    #         pretrained_dict = pretrained_dict['model']
-    #         print("---start load pretrained modle of swin encoder---")
 
-    #         model_dict = self.swin_unet.state_dict()
-    #         full_dict = copy.deepcopy(pretrained_dict)
-    #         for k, v in pretrained_dict.items():
-    #             if "layers." in k:
-    #                 current_layer_num = 3-int(k[7:8])
-    #                 current_k = "layers_up." + str(current_layer_num) + k[8:]
-    #                 full_dict.update({current_k:v})
-    #         for k in list(full_dict.keys()):
-    #             if k in model_dict:
-    #                 if full_dict[k].shape != model_dict[k].shape:
-    #                     print("delete:{};shape pretrain:{};shape model:{}".format(k,v.shape,model_dict[k].shape))
-    #                     del full_dict[k]
-
-    #         msg = self.swin_unet.load_state_dict(full_dict, strict=False)
-    #         # print(msg)
-    #     else:
-    #         print("none pretrain")
- 
  

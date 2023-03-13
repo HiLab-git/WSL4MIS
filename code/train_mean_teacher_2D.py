@@ -31,15 +31,15 @@ from val_2D import test_single_volume
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='../data/ACDC', help='Name of Experiment')
+                    default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
-                    default='ACDC_Semi/Mean_Teacher', help='experiment_name')
+                    default='ACDC_Semi/Mean_Teacher_scribble', help='experiment_name')
 parser.add_argument('--model', type=str,
                     default='unet', help='model_name')
 parser.add_argument('--fold', type=str,
-                    default='fold2', help='cross validation')
+                    default='fold1', help='cross validation')
 parser.add_argument('--sup_type', type=str,
-                    default='label', help='supervision type')
+                    default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
 parser.add_argument('--batch_size', type=int, default=12,
@@ -69,6 +69,7 @@ parser.add_argument('--consistency_rampup', type=float,
                     default=200.0, help='consistency_rampup')
 args = parser.parse_args()
 
+device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -103,6 +104,9 @@ def train(args, snapshot_path):
     model = create_model()
     ema_model = create_model(ema=True)
 
+    model=model.to(device)
+    ema_model=ema_model.to(device)
+
     db_train_labeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)
     ]))
@@ -124,8 +128,10 @@ def train(args, snapshot_path):
     optimizer = optim.SGD(model.parameters(), lr=base_lr,
                           momentum=0.9, weight_decay=0.0001)
 
-    ce_loss = CrossEntropyLoss()
-    dice_loss = losses.DiceLoss(num_classes)
+    # ce_loss = CrossEntropyLoss()
+    # dice_loss = losses.DiceLoss(num_classes)
+    ce_loss = CrossEntropyLoss(ignore_index=4)
+    dice_loss = losses.pDLoss(num_classes, ignore_index=4)
 
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader_labeled)))
@@ -139,8 +145,8 @@ def train(args, snapshot_path):
             sampled_batch_labeled, sampled_batch_unlabeled = data[0], data[1]
 
             volume_batch, label_batch = sampled_batch_labeled['image'], sampled_batch_labeled['label']
-            volume_batch, label_batch = volume_batch.cuda(), label_batch.cuda()
-            unlabeled_volume_batch = sampled_batch_unlabeled['image'].cuda()
+            volume_batch, label_batch = volume_batch.to(device), label_batch.to(device)
+            unlabeled_volume_batch = sampled_batch_unlabeled['image'].to(device)
             print("Labeled slices: ", sampled_batch_labeled["idx"])
             print("Unlabeled slices: ", sampled_batch_unlabeled["idx"])
 
@@ -159,7 +165,7 @@ def train(args, snapshot_path):
                 ema_output_soft = torch.softmax(ema_output, dim=1)
 
             loss_ce = ce_loss(outputs, label_batch[:].long())
-            loss_dice = dice_loss(outputs_soft, label_batch.unsqueeze(1))
+            loss_dice = ce_loss(outputs, label_batch[:].long())#dice_loss(outputs_soft, label_batch.unsqueeze(1))
             supervised_loss = 0.5 * (loss_dice + loss_ce)
             consistency_weight = get_current_consistency_weight(
                 iter_num // 300)
@@ -206,7 +212,7 @@ def train(args, snapshot_path):
                 metric_list = 0.0
                 for i_batch, sampled_batch in enumerate(valloader):
                     metric_i = test_single_volume(
-                        sampled_batch["image"], sampled_batch["label"], model, classes=num_classes)
+                        sampled_batch["image"].to(device), sampled_batch["label"].to(device), model, device=device,classes=num_classes)
                     metric_list += np.array(metric_i)
                 metric_list = metric_list / len(db_val)
                 for class_i in range(num_classes-1):
@@ -263,7 +269,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "../model/{}_{}/{}".format(args.exp, args.fold, args.sup_type)
+    snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}".format(args.exp, args.fold, args.sup_type)
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
 

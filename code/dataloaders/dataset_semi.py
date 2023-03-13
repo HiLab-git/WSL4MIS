@@ -131,12 +131,17 @@ class BaseDataSets(Dataset):
         if self.split == "train":
             image = h5f['image'][:]
             
-            if self.sup_type == "random_walker":
-                label = pseudo_label_generator_acdc(image, h5f["scribble"][:])
-            else:
-                label = h5f['scribble'][:]
-            sample = {'image': image, 'label': label}
-            sample = self.transform(sample)
+            label_wr = pseudo_label_generator_acdc(image, h5f["scribble"][:])
+            label = h5f['scribble'][:]
+            sample = {'image': image, 'label': label,'random_walker':label_wr}
+            sample = self.transform(sample)            
+            
+            # if self.sup_type == "random_walker":
+            #     label = pseudo_label_generator_acdc(image, h5f["scribble"][:])
+            # else:
+            #     label = h5f['scribble'][:]
+            # sample = {'image': image, 'label': label,'random_walker':}
+            # sample = self.transform(sample)
         else:
             image = h5f['image'][:]
             label = h5f['label'][:]
@@ -145,49 +150,55 @@ class BaseDataSets(Dataset):
         return sample
 
 
-def random_rot_flip(image, label):
+def random_rot_flip(image, label,label_wr):
     k = np.random.randint(0, 4)
     image = np.rot90(image, k)
     label = np.rot90(label, k)
+    label_wr = np.rot90(label_wr, k)
+
     axis = np.random.randint(0, 2)
+
     image = np.flip(image, axis=axis).copy()
     label = np.flip(label, axis=axis).copy()
-    return image, label
+    label_wr = np.flip(label_wr, axis=axis).copy()  
+
+    return image, label,label_wr
 
 
-def random_rotate(image, label, cval):
+def random_rotate(image, label,label_wr, cval):
     angle = np.random.randint(-20, 20)
     image = ndimage.rotate(image, angle, order=0, reshape=False)
-    label = ndimage.rotate(label, angle, order=0,
-                           reshape=False, mode="constant", cval=cval)
-    return image, label
+    label = ndimage.rotate(label, angle, order=0,reshape=False, mode="constant", cval=cval)
+    label_wr = ndimage.rotate(label_wr, angle, order=0,reshape=False, mode="constant", cval=cval)
+    return image, label,label_wr
 
 
 class RandomGenerator(object):
     def __init__(self, output_size):
         self.output_size = output_size
-
+                                #'random_walker':label_wr
     def __call__(self, sample):
-        image, label = sample['image'], sample['label']
+        image, label ,label_wr= sample['image'], sample['label'], sample['random_walker']
         # ind = random.randrange(0, img.shape[0])
         # image = img[ind, ...]
         # label = lab[ind, ...]
         if random.random() > 0.5:
-            image, label = random_rot_flip(image, label)
+            image, label,label_wr = random_rot_flip(image, label,label_wr)
         elif random.random() > 0.5:
             if 4 in np.unique(label):
-                image, label = random_rotate(image, label, cval=4)
+                image, label,label_wr = random_rotate(image, label,label_wr, cval=4)
             else:
-                image, label = random_rotate(image, label, cval=0)
+                image, label,label_wr = random_rotate(image, label,label_wr, cval=0)
         x, y = image.shape
-        image = zoom(
-            image, (self.output_size[0] / x, self.output_size[1] / y), order=0)
-        label = zoom(
-            label, (self.output_size[0] / x, self.output_size[1] / y), order=0)
-        image = torch.from_numpy(
-            image.astype(np.float32)).unsqueeze(0)
+        image = zoom(image, (self.output_size[0] / x, self.output_size[1] / y), order=0)
+        label = zoom(label, (self.output_size[0] / x, self.output_size[1] / y), order=0)
+        label_wr = zoom(label_wr, (self.output_size[0] / x, self.output_size[1] / y), order=0)
+
+        image = torch.from_numpy(image.astype(np.float32)).unsqueeze(0)
         label = torch.from_numpy(label.astype(np.uint8))
-        sample = {'image': image, 'label': label}
+        label_wr = torch.from_numpy(label_wr.astype(np.uint8))
+
+        sample = {'image': image, 'label': label,'random_walker':label_wr}
         return sample
 
 
