@@ -31,16 +31,17 @@ from networks.vision_transformer import SwinUnet as ViT_seg
 from config import get_config
 from torch.nn import CosineSimilarity
 from torch.utils.data.distributed import DistributedSampler
-# """选择GPU ID"""
-# gpu_list = [4] #[0,1]
+"""选择GPU ID"""
+# gpu_list = [1,2] #[0,1]
 # gpu_list_str = ','.join(map(str, gpu_list))
 # os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_list_str)
-# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 from utils.gate_crf_loss import ModelLossSemsegGatedCRF
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
+                    default='/mnt/sdd/tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
                     default='ACDC_Semi/Mean_Teacher', help='experiment_name')
 parser.add_argument('--model', type=str,
@@ -51,7 +52,7 @@ parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--batch_size', type=int, default=32,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -59,17 +60,18 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
-parser.add_argument('--seed', type=int,  default=2022, help='random seed')
+parser.add_argument('--seed', type=int,  default=42, help='random seed')
 parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 
 # label and unlabel
-parser.add_argument('--labeled_bs', type=int, default=12,
+parser.add_argument('--labeled_bs', type=int, default=16,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4,
                     help='labeled data')
 # costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
+parser.add_argument('--ema_decay2', type=float,  default=0.8, help='ema_decay')
 parser.add_argument('--consistency_type', type=str,
                     default="mse", help='consistency_type')
 parser.add_argument('--consistency', type=float,
@@ -113,7 +115,7 @@ parser.add_argument("--local_rank", default=os.getenv('LOCAL_RANK', 2), type=int
 args = parser.parse_args()
 config = get_config(args)
 # 
-device = torch.device('cuda:7' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -145,7 +147,8 @@ def train(args, snapshot_path):
     def create_model(ema=False):
         # Network definition
         # model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
-        model = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)
+        model = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)      
+
         if ema:
             for param in model.parameters():
                 param.detach_()
@@ -153,9 +156,14 @@ def train(args, snapshot_path):
     
     model = create_model()
     ema_model = create_model(ema=True)
+    
+    # ema_model2 = create_model(ema=True)
 
     model=model.to(device) 
-    ema_model=ema_model.to(device) 
+    ema_model =ema_model.to(device)
+    # model = torch.nn.DataParallel(model)
+    # ema_model = torch.nn.DataParallel(ema_model).to(device)
+    # ema_model2=ema_model.to(device)  
     # model = nn.MMDistributedDataParallel(
     #     model.cuda(),
     #     device_ids=[torch.cuda.current_device()],
@@ -196,8 +204,8 @@ def train(args, snapshot_path):
 
     model.train()
 
-    optimizer = optim.SGD(model.parameters(), lr=base_lr,
-                          momentum=0.9, weight_decay=0.0001)
+    optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
+    # optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=0.0001) 
 
     ce_loss = CrossEntropyLoss(ignore_index=4)
     dice_loss = losses.pDLoss(num_classes, ignore_index=4)
@@ -232,27 +240,59 @@ def train(args, snapshot_path):
             ema_inputs = unlabeled_volume_batch + noise
             ema_inputs = torch.cat([volume_batch,ema_inputs],0)
 
+            noise2 = torch.clamp(torch.randn_like(unlabeled_volume_batch) * 0.1, -0.2, 0.2)
+            ema_inputs2 = unlabeled_volume_batch + noise2
+            ema_inputs2 = torch.cat([volume_batch,ema_inputs2],0)
+
             volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
 
-            outputs,calss,attpred = model(volume_batch)
+            outputs,calss,attpred,attpred_ = model(volume_batch)
 
             outputs_soft = torch.softmax(outputs, dim=1)
             outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
+            
+
+
 
             with torch.no_grad():
-                ema_output,ema_calss,ema_attpred  = ema_model(ema_inputs)
+                ema_output,ema_calss,ema_attpred ,ema_attpred_ = ema_model(ema_inputs)
                 ema_output_soft = torch.softmax(ema_output, dim=1)
+                
+            #     ema_output2,ema_calss2,ema_attpred  = ema_model2(ema_inputs2)
+            #     ema_output_soft2 = torch.softmax(ema_output2, dim=1)
+            # ema_output_soft=(ema_output_soft+ema_output_soft2)/2               
 
             loss_ce = ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
             loss_dice =ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
 
 
+
+
+            # _,token_b4_n1, token_b4_n2 = attpred_[3][0].size()
+            bz, _, token_b4_n1, token_b4_n2 = attpred_[3].size()
+            attn_avg4 = torch.zeros(bz, token_b4_n1, token_b4_n2, dtype=outputs.dtype, device=outputs.device)
+            for attn in attpred_[3]:
+                attn = attn.mean(dim=0)
+                attn = attn / attn.sum(dim=-1,keepdim=True)
+                attn_avg4 += attn
+            attn_avg4 = attn_avg4 / len(attpred_[3]) 
+            attn_avg4=attn_avg4.unsqueeze(1)
+
+
+            pseudo_labels = torch.zeros_like(ema_output)
+
+            channel_map = ema_attpred
+            threshold = torch.quantile(channel_map, 0.95) # Set the threshold for each channel
+            binary_mask = (channel_map > threshold).float()
+            pseudo_labels= binary_mask * outputs  
+
+            pseudo_labels = torch.argmax(
+                pseudo_labels[:args.labeled_bs].detach(), dim=1, keepdim=False)
             loss_ce_wr = ce_loss(outputs[:args.labeled_bs,...], label_batch_wr[:].long())
             loss_dice_wr= dice_loss(outputs_soft[:args.labeled_bs,...], label_batch_wr.unsqueeze(1))
             #dice_loss(outputs_soft[:args.labeled_bs,...], label_batch.unsqueeze(1))
             # supervised_loss = 0.5 * (loss_dice + loss_ce)
             supervised_loss=loss_ce+loss_dice_wr+loss_ce_wr
-
 
 
             #consistency loss
@@ -261,11 +301,15 @@ def train(args, snapshot_path):
                 consistency_loss = 0.0
             else:
                 consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft[args.labeled_bs:,...]) ** 2)
-    
+                
             
             #aff_loss
-            aff_loss = losses.get_aff_loss(attpred[:args.labeled_bs,...],label_batch_wr)
-            
+            aff_loss = losses.get_aff_loss(attpred[args.labeled_bs:,...],ema_attpred[args.labeled_bs:,...])
+
+            attn_avg4=F.interpolate(attn_avg4, size=outputs.shape[2:], mode='bilinear', align_corners=False)
+            affinity_loss_mat     = torch.abs(torch.softmax(torch.matmul(attn_avg4[:args.labeled_bs,...]
+                                                                   , outputs[:args.labeled_bs,...]),dim=-1) - outputs_soft[:args.labeled_bs,...])
+            affinity_loss=affinity_loss_mat.mean()  
             # cosine similarity loss
             create_center_1_bg = calss[0].unsqueeze(1)# 4,1,x,y,z->4,2
             create_center_1_a =  calss[1].unsqueeze(1)
@@ -309,13 +353,14 @@ def train(args, snapshot_path):
                                             lb_center_12_a,un_center_12_bg, un_center_12_a,
                                             lb_center_12_b,lb_center_12_c,un_center_12_b,un_center_12_c)
 
-            loss = supervised_loss+consistency_loss+loss_contrast*args.my_lambda+aff_loss
+            loss = supervised_loss+consistency_loss+loss_contrast*args.my_lambda+aff_loss+affinity_loss
             optimizer.zero_grad()
 
             # loss.backward(retain_graph=True)
             loss.backward()
             optimizer.step()
             update_ema_variables(model, ema_model, args.ema_decay, iter_num)
+
 
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
             for param_group in optimizer.param_groups:
@@ -406,7 +451,7 @@ def backup_code(base_dir):
     net_name3 = 'vision_transformer.py'
     shutil.copy('networks/' + net_name1, code_path + '/' + net_name1)
     shutil.copy('networks/' + net_name2, code_path + '/' + net_name2)
-    shutil.copy('networks/' + net_name2, code_path + '/' + net_name3)
+    shutil.copy('networks/' + net_name3, code_path + '/' + net_name3)
     shutil.copy('dataloaders/' + dataset_name, code_path + '/' + dataset_name)
     # shutil.copy('dataloaders/' + dataset_name2, code_path + '/' + dataset_name2)
     shutil.copy(train_name, code_path + '/' + train_name)
@@ -424,7 +469,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     backup_code(snapshot_path)

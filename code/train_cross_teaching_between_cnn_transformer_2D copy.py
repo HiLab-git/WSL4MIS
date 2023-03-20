@@ -112,7 +112,7 @@ parser.add_argument('--consistency_rampup', type=float,
                     default=200.0, help='consistency_rampup')
 args = parser.parse_args()
 config = get_config(args)
-
+device = torch.device('cuda:4' if torch.cuda.is_available() else 'cpu')
 
 def kaiming_normal_init_weight(model):
     for m in model.modules():
@@ -166,17 +166,17 @@ def train(args, snapshot_path):
     max_iterations = args.max_iterations
 
 
-    # def create_model(ema=False):
-    #     # Network definition
-    #     model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
-    #     if ema:
-    #         for param in model.parameters():
-    #             param.detach_()
-    #     return model
+    def create_model(ema=False):
+        # Network definition
+        model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
+        if ema:
+            for param in model.parameters():
+                param.detach_()
+        return model
 
-    # model1 = create_model()
-    device = torch.device('cuda:4' if torch.cuda.is_available() else 'cpu')
-    model1 = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)
+    model1 = create_model()
+    
+    # model1 = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)
     model2 = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)
     # model2.load_from(config)
     

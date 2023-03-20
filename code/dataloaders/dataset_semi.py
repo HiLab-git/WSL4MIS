@@ -40,7 +40,11 @@ class BaseDataSets(Dataset):
         self.transform = transform
         self.num = num
         self.labeled_type = labeled_type
+        self.input_size = 256
+        self.crop_size  = 128
+        self.patch_num=4
         train_ids, test_ids = self._get_fold_ids(fold)
+
         all_labeled_ids = ["patient{:0>3}".format(10 * i) for i in range(1, 11)]
         if self.split == 'train':
             self.all_slices = os.listdir(
@@ -120,13 +124,13 @@ class BaseDataSets(Dataset):
     def __getitem__(self, idx):
         case = self.sample_list[idx]
         if self.split == "train":
-            h5f = h5py.File(self._base_dir +
-                            "/ACDC_training_slices/{}".format(case), 'r')
+            h5f = h5py.File(self._base_dir +"/ACDC_training_slices/{}".format(case), 'r')
         else:
-            h5f = h5py.File(self._base_dir +
-                            "/ACDC_training_volumes/{}".format(case), 'r')
+            h5f = h5py.File(self._base_dir +"/ACDC_training_volumes/{}".format(case), 'r')
+        boxes = self.box_generation()
+        
         image = h5f['image'][:]
-        label = h5f['scribble'][:]
+        label = h5f['label'][:]
         sample = {'image': image, 'label': label}
         if self.split == "train":
             image = h5f['image'][:]
@@ -134,20 +138,34 @@ class BaseDataSets(Dataset):
             label_wr = pseudo_label_generator_acdc(image, h5f["scribble"][:])
             label = h5f['scribble'][:]
             sample = {'image': image, 'label': label,'random_walker':label_wr}
-            sample = self.transform(sample)            
+            sample = self.transform(sample) 
             
-            # if self.sup_type == "random_walker":
-            #     label = pseudo_label_generator_acdc(image, h5f["scribble"][:])
-            # else:
-            #     label = h5f['scribble'][:]
-            # sample = {'image': image, 'label': label,'random_walker':}
-            # sample = self.transform(sample)
+            crop_images = []
+            for i in range(len(boxes)):
+                box = boxes[i][1:]
+                crop_images.append(sample['image'][:, box[1]:box[3], box[0]:box[2]].clone()[None])
+            crop_images = torch.cat(crop_images, dim=0)           
+            # crop_images=(sample['image'][:, box[1]:box[3], box[0]:box[2]].clone()[None])
+            sample['boxes']=boxes
+            sample['crop_images']=crop_images
+
         else:
             image = h5f['image'][:]
             label = h5f['label'][:]
             sample = {'image': image, 'label': label}
         sample["idx"] = case.split("_")[0]
         return sample
+
+    def box_generation(self):
+        max_range = self.input_size - self.crop_size
+        boxes = []
+        for i in range(self.patch_num):
+            ind_h, ind_w = np.random.randint(0, max_range, size=2)
+            boxes.append(torch.tensor([0, ind_w, ind_h, ind_w + self.crop_size, ind_h + self.crop_size])[None])
+        boxes = torch.cat(boxes, dim=0)
+
+        return boxes  # K, 5
+
 
 
 def random_rot_flip(image, label,label_wr):

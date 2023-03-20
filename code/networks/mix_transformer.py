@@ -345,7 +345,63 @@ class MixVisionTransformer(nn.Module):
     def reset_classifier(self, num_classes, global_pool=''):
         self.num_classes = num_classes
         self.head = nn.Linear(self.embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+    
+    # def forward_features(self, x):
+    #     B = x.shape[0]
+    #     outs = []
+    #     attns = []
 
+    #     # stage 1
+    #     x, H, W = self.patch_embed1(x)  # x-[bz,128*128, 64]
+    #     attns1  = []
+    #     for i, blk in enumerate(self.block1):
+    #         x, attn = blk(x, H, W)
+    #         attns1.append(attn)
+    #     x = self.norm1(x)
+    #     x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+    #     outs.append(x)
+    #     attns.append(attns1)
+
+    #     # stage 2
+    #     x, H, W = self.patch_embed2(x)
+    #     attns2  = []
+    #     for i, blk in enumerate(self.block2):
+    #         x, attn = blk(x, H, W)
+    #         attns2.append(attn)
+    #     x = self.norm2(x)
+    #     x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+    #     outs.append(x)
+    #     attns.append(attns2)
+
+    #     # stage 3
+    #     x, H, W = self.patch_embed3(x)
+    #     attns3  = []
+    #     for i, blk in enumerate(self.block3):
+    #         x, attn = blk(x, H, W)
+    #         attns3.append(attn)
+    #     x = self.norm3(x)
+    #     x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+    #     outs.append(x)
+    #     attns.append(attns3)
+
+    #     # stage 4
+    #     x, H, W = self.patch_embed4(x)
+    #     attns4 = []
+    #     for i, blk in enumerate(self.block4):
+    #         x, attn = blk(x, H, W)
+    #         attns4.append(attn)
+    #     x = self.norm4(x)
+    #     x = x.reshape(B, H, W, -1).permute(0, 3, 1, 2).contiguous()
+    #     outs.append(x)
+    #     attns.append(attns4)
+
+    #     return outs, attns
+
+    # def forward(self, x):  # x-[bz,3,512,512]
+    #     x, attns = self.forward_features(x)
+    #     # x = self.head(x)
+
+    #     return x, attns
     def forward_features(self, x):
         B = x.shape[0]
         outs = []

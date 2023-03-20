@@ -47,7 +47,7 @@ _C.MODEL.TYPE = 'swin'
 # Model name
 _C.MODEL.NAME = 'swin_tiny_patch4_window7_224'
 # Checkpoint to resume, could be overwritten by command line argument
-_C.MODEL.PRETRAIN_CKPT = '/mnt/sdd/yd2tb/SSL4MIS/code/pretrained_ckpt/swin_tiny_patch4_window7_224.pth'
+_C.MODEL.PRETRAIN_CKPT = '/mnt/sdd/tb/WSL4MIS/code/pretrained_ckpt/swin_tiny_patch4_window7_224.pth'
 _C.MODEL.RESUME = ''
 # Number of classes, overwritten in data preparation
 _C.MODEL.NUM_CLASSES = 1000
@@ -59,6 +59,21 @@ _C.MODEL.DROP_PATH_RATE = 0.1
 _C.MODEL.LABEL_SMOOTHING = 0.1
 
 # Swin Transformer parameters
+# _C.MODEL.SWIN = CN()
+# _C.MODEL.SWIN.PATCH_SIZE = 4
+# _C.MODEL.SWIN.IN_CHANS = 3
+# _C.MODEL.SWIN.EMBED_DIM = 96
+# _C.MODEL.SWIN.DEPTHS = [2, 2, 6, 2]
+# _C.MODEL.SWIN.DECODER_DEPTHS = [2, 2, 6, 2]
+# _C.MODEL.SWIN.NUM_HEADS = [3, 6, 12, 24]
+# _C.MODEL.SWIN.WINDOW_SIZE = 7
+# _C.MODEL.SWIN.MLP_RATIO = 4.
+# _C.MODEL.SWIN.QKV_BIAS = True
+# _C.MODEL.SWIN.QK_SCALE =False# None
+# _C.MODEL.SWIN.APE = False
+# _C.MODEL.SWIN.PATCH_NORM = True
+# _C.MODEL.SWIN.FINAL_UPSAMPLE= "expand_first"
+# Swin Transformer parameters
 _C.MODEL.SWIN = CN()
 _C.MODEL.SWIN.PATCH_SIZE = 4
 _C.MODEL.SWIN.IN_CHANS = 3
@@ -69,10 +84,12 @@ _C.MODEL.SWIN.NUM_HEADS = [3, 6, 12, 24]
 _C.MODEL.SWIN.WINDOW_SIZE = 7
 _C.MODEL.SWIN.MLP_RATIO = 4.
 _C.MODEL.SWIN.QKV_BIAS = True
-_C.MODEL.SWIN.QK_SCALE = None
+_C.MODEL.SWIN.QK_SCALE = False
 _C.MODEL.SWIN.APE = False
 _C.MODEL.SWIN.PATCH_NORM = True
 _C.MODEL.SWIN.FINAL_UPSAMPLE= "expand_first"
+
+
 
 # -----------------------------------------------------------------------------
 # Training settings
@@ -133,7 +150,7 @@ _C.AUG.MIXUP = 0.8
 # Cutmix alpha, cutmix enabled if > 0
 _C.AUG.CUTMIX = 1.0
 # Cutmix min/max ratio, overrides alpha and enables cutmix if set
-_C.AUG.CUTMIX_MINMAX = None
+_C.AUG.CUTMIX_MINMAX =False #None
 # Probability of performing mixup or cutmix when either/both is enabled
 _C.AUG.MIXUP_PROB = 1.0
 # Probability of switching to cutmix when both mixup and cutmix enabled

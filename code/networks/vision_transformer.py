@@ -22,7 +22,7 @@ from mmseg.ops import resize
 
 from networks.mix_transformer import MixVisionTransformer
 from functools import partial
-from networks.head import SegFormerHead
+from networks.head import SegFormerHead,Unet_Decoder
 from functools import partial
 import pickle
 # from networks.decode_head import Classification_head
@@ -91,6 +91,17 @@ class SwinUnet(nn.Module):
                             decoder_params=dict(embed_dim=256),
                             loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0))
         
+        params = {
+                  'feature_chns': [32, 64, 160, 256],
+                  'dropout': [0.05, 0.1, 0.2, 0.3],
+                  'class_num': 4,
+                  'bilinear': False,
+                  'acti_func': 'relu'}
+        self.unet_decoder = Unet_Decoder(params)
+
+
+
+
         self.attn_proj = nn.Conv2d(in_channels=16, out_channels=1, kernel_size=1, bias=True)        
         nn.init.kaiming_normal_(self.attn_proj.weight, a=np.sqrt(5), mode="fan_out")    
 
@@ -104,7 +115,7 @@ class SwinUnet(nn.Module):
         # pickle.load = partial(pickle.load, encoding="latin1")
         # pickle.Unpickler = partial(pickle.Unpickler, encoding="latin1")
         # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth', map_location=lambda storage, loc: storage, pickle_module=pickle)            
-        state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth')
+        state_dict = torch.load('/mnt/sdd/tb/pretrained/'+'mit_b0'+'.pth')
         state_dict.pop('head.weight')
         state_dict.pop('head.bias')
         self.mix_transformer.load_state_dict(state_dict,)
@@ -117,16 +128,20 @@ class SwinUnet(nn.Module):
         attn_pred = torch.sigmoid(attn_pred)#[:,0,...]
 
 
+        # if logits[0].shape[0]>
 
         logits_=self.seg_head(logits[0])
-        calss=logits_[1]
+        
+        logits_unethead=self.unet_decoder(logits[0])
 
-        out=F.interpolate(logits_[0], size=x.shape[2:], mode='bilinear', align_corners=False)
-        # out = resize(input=logits_[0],ize=x.shape[2:], mode='bilinear',align_corners=False)
+        calss=logits_[1]
+        out_seg=logits_[0]
+        out=F.interpolate(logits_unethead, size=x.shape[2:], mode='bilinear', align_corners=False)
+        out_seg = F.interpolate(input=out_seg,size=x.shape[2:], mode='bilinear',align_corners=False)
 
         # affinity_ = torch.softmax(torch.matmul(attn_pred, torch.softmax(out, dim=-1)),dim=-1)   
 
-        return out,calss,attn_pred
+        return out,calss,attn_pred,_attns
 
 
 

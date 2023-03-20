@@ -40,18 +40,18 @@ from utils.gate_crf_loss import ModelLossSemsegGatedCRF
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
+                    default='/mnt/sdd/tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
                     default='ACDC_Semi/Mean_Teacher', help='experiment_name')
 parser.add_argument('--model', type=str,
-                    default='unet', help='model_name')
+                    default='unet_new', help='model_name')
 parser.add_argument('--fold', type=str,
-                    default='fold1', help='cross validation')
+                    default='fold3', help='cross validation')
 parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--batch_size', type=int, default=16,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -59,17 +59,18 @@ parser.add_argument('--base_lr', type=float,  default=0.01,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
-parser.add_argument('--seed', type=int,  default=2022, help='random seed')
+parser.add_argument('--seed', type=int,  default=42, help='random seed')
 parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 
 # label and unlabel
-parser.add_argument('--labeled_bs', type=int, default=12,
+parser.add_argument('--labeled_bs', type=int, default=8,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4,
                     help='labeled data')
 # costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
+parser.add_argument('--ema_decay2', type=float,  default=0.8, help='ema_decay')
 parser.add_argument('--consistency_type', type=str,
                     default="mse", help='consistency_type')
 parser.add_argument('--consistency', type=float,
@@ -144,18 +145,21 @@ def train(args, snapshot_path):
 
     def create_model(ema=False):
         # Network definition
-        # model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
-        model = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)
+        model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
+        
         if ema:
             for param in model.parameters():
                 param.detach_()
         return model
     
-    model = create_model()
-    ema_model = create_model(ema=True)
+    model1 = create_model()
+    # ema_model = create_model(ema=True)
+    model2 = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes)
+    # ema_model2 = create_model(ema=True)
 
-    model=model.to(device) 
-    ema_model=ema_model.to(device) 
+    model1=model1.to(device) 
+    model2 =model2.to(device)
+
     # model = nn.MMDistributedDataParallel(
     #     model.cuda(),
     #     device_ids=[torch.cuda.current_device()],
@@ -194,10 +198,13 @@ def train(args, snapshot_path):
     valloader = DataLoader(db_val, batch_size=1, shuffle=False,
                            num_workers=1)
 
-    model.train()
+    model1.train()
+    model2.train()
 
-    optimizer = optim.SGD(model.parameters(), lr=base_lr,
-                          momentum=0.9, weight_decay=0.0001)
+    optimizer1 = optim.SGD(model1.parameters(), lr=base_lr,
+                           momentum=0.9, weight_decay=0.0001)
+    optimizer2 = optim.SGD(model2.parameters(), lr=base_lr,
+                           momentum=0.9, weight_decay=0.0001)
 
     ce_loss = CrossEntropyLoss(ignore_index=4)
     dice_loss = losses.pDLoss(num_classes, ignore_index=4)
@@ -232,16 +239,27 @@ def train(args, snapshot_path):
             ema_inputs = unlabeled_volume_batch + noise
             ema_inputs = torch.cat([volume_batch,ema_inputs],0)
 
+            # noise2 = torch.clamp(torch.randn_like(unlabeled_volume_batch) * 0.1, -0.2, 0.2)
+            # ema_inputs2 = unlabeled_volume_batch + noise2
+            # ema_inputs2 = torch.cat([volume_batch,ema_inputs2],0)
+
             volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
 
-            outputs,calss,attpred = model(volume_batch)
+            outputs,calss,attpred = model1(volume_batch)
 
             outputs_soft = torch.softmax(outputs, dim=1)
             outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
+            
 
-            with torch.no_grad():
-                ema_output,ema_calss,ema_attpred  = ema_model(ema_inputs)
-                ema_output_soft = torch.softmax(ema_output, dim=1)
+
+
+            
+            ema_output,ema_calss,ema_attpred  = model2(volume_batch)
+            ema_output_soft = torch.softmax(ema_output, dim=1)
+                
+            #     ema_output2,ema_calss2,ema_attpred  = ema_model(ema_inputs2)
+            #     ema_output_soft2 = torch.softmax(ema_output2, dim=1)
+            # ema_output_soft=(ema_output_soft+ema_output_soft2)/2               
 
             loss_ce = ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
             loss_dice =ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
@@ -249,11 +267,20 @@ def train(args, snapshot_path):
 
             loss_ce_wr = ce_loss(outputs[:args.labeled_bs,...], label_batch_wr[:].long())
             loss_dice_wr= dice_loss(outputs_soft[:args.labeled_bs,...], label_batch_wr.unsqueeze(1))
+
+
+            loss_ce2 = ce_loss(ema_output[:args.labeled_bs,...], label_batch[:].long())
+            loss_dice2 =ce_loss(ema_output[:args.labeled_bs,...], label_batch[:].long())
+
+
+            loss_ce_wr2  = ce_loss(ema_output_soft[:args.labeled_bs,...], label_batch_wr[:].long())
+            loss_dice_wr2= dice_loss(ema_output_soft[:args.labeled_bs,...], label_batch_wr.unsqueeze(1))
+
             #dice_loss(outputs_soft[:args.labeled_bs,...], label_batch.unsqueeze(1))
             # supervised_loss = 0.5 * (loss_dice + loss_ce)
-            supervised_loss=loss_ce+loss_dice_wr+loss_ce_wr
+            supervised_loss=loss_ce+loss_dice_wr+loss_ce_wr+loss_ce2+loss_dice_wr2+loss_ce_wr2
 
-
+            # loss_un=torch.sum(torch.square(outputs_soft[:args.labeled_bs,...] - torch.mean(outputs_soft[:args.labeled_bs,...]))) 
 
             #consistency loss
             consistency_weight = get_current_consistency_weight(iter_num // 300)
@@ -264,13 +291,13 @@ def train(args, snapshot_path):
     
             
             #aff_loss
-            aff_loss = losses.get_aff_loss(attpred[:args.labeled_bs,...],label_batch_wr)
+            aff_loss = losses.get_aff_loss(attpred[:args.labeled_bs,...],ema_attpred[:args.labeled_bs,...])
             
             # cosine similarity loss
-            create_center_1_bg = calss[0].unsqueeze(1)# 4,1,x,y,z->4,2
-            create_center_1_a =  calss[1].unsqueeze(1)
-            create_center_1_b =  calss[2].unsqueeze(1)
-            create_center_1_c =  calss[3].unsqueeze(1)
+            create_center_1_bg = calss.unsqueeze(1)# 4,1,x,y,z->4,2
+            create_center_1_a =  calss.unsqueeze(1)
+            create_center_1_b =  calss.unsqueeze(1)
+            create_center_1_c =  calss.unsqueeze(1)
 
 
 
@@ -309,16 +336,24 @@ def train(args, snapshot_path):
                                             lb_center_12_a,un_center_12_bg, un_center_12_a,
                                             lb_center_12_b,lb_center_12_c,un_center_12_b,un_center_12_c)
 
-            loss = supervised_loss+consistency_loss+loss_contrast*args.my_lambda+aff_loss
-            optimizer.zero_grad()
 
-            # loss.backward(retain_graph=True)
+
+            loss = 5*supervised_loss+consistency_loss+loss_contrast*args.my_lambda+aff_loss #+loss_un
+            optimizer1.zero_grad()
+            optimizer2.zero_grad()
+
             loss.backward()
-            optimizer.step()
-            update_ema_variables(model, ema_model, args.ema_decay, iter_num)
+
+            optimizer1.step()
+            optimizer2.step()
+            # update_ema_variables(model, ema_model, args.ema_decay, iter_num)
+            # update_ema_variables(model, ema_model, args.ema_decay2, iter_num)
 
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
-            for param_group in optimizer.param_groups:
+            for param_group in optimizer1.param_groups:
+                param_group['lr'] = lr_
+
+            for param_group in optimizer2.param_groups:
                 param_group['lr'] = lr_
 
             iter_num = iter_num + 1
@@ -346,11 +381,11 @@ def train(args, snapshot_path):
                 writer.add_image('train/GroundTruth', labs, iter_num)
 
             if iter_num > 0 and iter_num % 200 == 0:
-                model.eval()
+                model1.eval()
                 metric_list = 0.0
                 for i_batch, sampled_batch in enumerate(valloader):
                     metric_i = test_single_volume2(
-                        sampled_batch["image"].to(device), sampled_batch["label"].to(device), model, device=device,classes=num_classes)
+                        sampled_batch["image"].to(device), sampled_batch["label"].to(device), model1, device=device,classes=num_classes)
                     metric_list += np.array(metric_i)
                 metric_list = metric_list / len(db_val)
                 for class_i in range(num_classes-1):
@@ -372,17 +407,17 @@ def train(args, snapshot_path):
                                                       iter_num, round(best_performance, 4)))
                     save_best = os.path.join(snapshot_path,
                                              '{}_best_model.pth'.format(args.model))
-                    torch.save(model.state_dict(), save_mode_path)
-                    torch.save(model.state_dict(), save_best)
+                    torch.save(model1.state_dict(), save_mode_path)
+                    torch.save(model1.state_dict(), save_best)
 
                 logging.info(
                     'iteration %d : mean_dice : %f mean_hd95 : %f' % (iter_num, performance, mean_hd95))
-                model.train()
+                model1.train()
 
             if iter_num % 3000 == 0:
                 save_mode_path = os.path.join(
                     snapshot_path, 'iter_' + str(iter_num) + '.pth')
-                torch.save(model.state_dict(), save_mode_path)
+                torch.save(model1.state_dict(), save_mode_path)
                 logging.info("save model to {}".format(save_mode_path))
 
             if iter_num >= max_iterations:
@@ -424,7 +459,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     backup_code(snapshot_path)

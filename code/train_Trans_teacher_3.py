@@ -40,7 +40,7 @@ from utils.gate_crf_loss import ModelLossSemsegGatedCRF
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--root_path', type=str,
-                    default='/mnt/sdd/yd2tb/data/ACDC', help='Name of Experiment')
+                    default='/mnt/sdd/tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
                     default='ACDC_Semi/Mean_Teacher', help='experiment_name')
 parser.add_argument('--model', type=str,
@@ -51,7 +51,7 @@ parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=24,
+parser.add_argument('--batch_size', type=int, default=32,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -64,12 +64,13 @@ parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 
 # label and unlabel
-parser.add_argument('--labeled_bs', type=int, default=12,
+parser.add_argument('--labeled_bs', type=int, default=16,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4,
                     help='labeled data')
 # costs
 parser.add_argument('--ema_decay', type=float,  default=0.99, help='ema_decay')
+parser.add_argument('--ema_decay2', type=float,  default=0.8, help='ema_decay')
 parser.add_argument('--consistency_type', type=str,
                     default="mse", help='consistency_type')
 parser.add_argument('--consistency', type=float,
@@ -153,9 +154,11 @@ def train(args, snapshot_path):
     
     model = create_model()
     ema_model = create_model(ema=True)
+    ema_model2 = create_model(ema=True)
 
     model=model.to(device) 
-    ema_model=ema_model.to(device) 
+    ema_model =ema_model.to(device)
+    ema_model2=ema_model.to(device)  
     # model = nn.MMDistributedDataParallel(
     #     model.cuda(),
     #     device_ids=[torch.cuda.current_device()],
@@ -232,16 +235,27 @@ def train(args, snapshot_path):
             ema_inputs = unlabeled_volume_batch + noise
             ema_inputs = torch.cat([volume_batch,ema_inputs],0)
 
+            noise2 = torch.clamp(torch.randn_like(unlabeled_volume_batch) * 0.1, -0.2, 0.2)
+            ema_inputs2 = unlabeled_volume_batch + noise2
+            ema_inputs2 = torch.cat([volume_batch,ema_inputs2],0)
+
             volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
 
             outputs,calss,attpred = model(volume_batch)
 
             outputs_soft = torch.softmax(outputs, dim=1)
             outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
+            
+
+
 
             with torch.no_grad():
                 ema_output,ema_calss,ema_attpred  = ema_model(ema_inputs)
                 ema_output_soft = torch.softmax(ema_output, dim=1)
+                
+                ema_output2,ema_calss2,ema_attpred  = ema_model(ema_inputs2)
+                ema_output_soft2 = torch.softmax(ema_output2, dim=1)
+            ema_output_soft=(ema_output_soft+ema_output_soft2)/2               
 
             loss_ce = ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
             loss_dice =ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
@@ -316,6 +330,7 @@ def train(args, snapshot_path):
             loss.backward()
             optimizer.step()
             update_ema_variables(model, ema_model, args.ema_decay, iter_num)
+            update_ema_variables(model, ema_model, args.ema_decay2, iter_num)
 
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
             for param_group in optimizer.param_groups:
@@ -424,7 +439,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/yd2tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     backup_code(snapshot_path)
