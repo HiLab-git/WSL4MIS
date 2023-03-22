@@ -176,19 +176,20 @@ class Self_Attention(nn.Module):
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
+        
+        return attn_
+        # # #####
+        # # #attn_ = attn_.clone().mean(1).reshape(-1, H, W, attn.shape[-1],)
+        # # #attn_ = F.avg_pool2d(attn_.permute(0,3,1,2), kernel_size=self.sr_ratio, stride=self.sr_ratio)
+        # # #attn_ = attn_.reshape(-1, attn.shape[-1], attn.shape[-1])
+        # attn_copy = attn_.clone().reshape(B, self.num_heads, H, W)   # [bz, 1, 128, 128, 16*16]
+        # if self.sr_ratio > 1:
+        #     attn_copy = F.avg_pool3d(attn_copy, kernel_size=(self.sr_ratio, self.sr_ratio, 1), stride=(self.sr_ratio, self.sr_ratio, 1))
+        # #     #attn_copy = attn_copy.reshape(B, self.num_heads, self.sr_ratio, -1, W, attn.shape[-1],).mean(2)
+        # #     #attn_copy = attn_copy.reshape(B, self.num_heads, attn_copy.shape[2], self.sr_ratio, -1, attn.shape[-1],).mean(3)
+        # # #print(attn_copy.shape)
+        # # #attn_ = F.avg_pool2d(attn_.permute(0,3,1,2), kernel_size=self.sr_ratio, stride=self.sr_ratio)
+        # attn_copy = attn_copy.reshape(-1, self.num_heads, attn.shape[-1], attn.shape[-1])
+        # # #####
 
-        # #####
-        # #attn_ = attn_.clone().mean(1).reshape(-1, H, W, attn.shape[-1],)
-        # #attn_ = F.avg_pool2d(attn_.permute(0,3,1,2), kernel_size=self.sr_ratio, stride=self.sr_ratio)
-        # #attn_ = attn_.reshape(-1, attn.shape[-1], attn.shape[-1])
-        attn_copy = attn_.clone().reshape(B, self.num_heads, H, W)   # [bz, 1, 128, 128, 16*16]
-        if self.sr_ratio > 1:
-            attn_copy = F.avg_pool3d(attn_copy, kernel_size=(self.sr_ratio, self.sr_ratio, 1), stride=(self.sr_ratio, self.sr_ratio, 1))
-        #     #attn_copy = attn_copy.reshape(B, self.num_heads, self.sr_ratio, -1, W, attn.shape[-1],).mean(2)
-        #     #attn_copy = attn_copy.reshape(B, self.num_heads, attn_copy.shape[2], self.sr_ratio, -1, attn.shape[-1],).mean(3)
-        # #print(attn_copy.shape)
-        # #attn_ = F.avg_pool2d(attn_.permute(0,3,1,2), kernel_size=self.sr_ratio, stride=self.sr_ratio)
-        attn_copy = attn_copy.reshape(-1, self.num_heads, attn.shape[-1], attn.shape[-1])
-        # #####
-
-        return attn_copy
+        # return attn_copy

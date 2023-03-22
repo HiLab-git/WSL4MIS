@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from medpy import metric
 from scipy.ndimage import zoom
-
+import torch.nn.functional as F
 
 def calculate_metric_percase(pred, gt):
     pred[pred > 0] = 1
@@ -63,11 +63,10 @@ def test_single_volume2(image, label, net, classes, device,patch_size=[256, 256]
                 0).unsqueeze(0).float().to(device)
             net.eval()
             with torch.no_grad():
-                out = torch.argmax(torch.softmax(
-                    net(input)[0], dim=1), dim=1).squeeze(0)
+                # output=F.interpolate(net(input)[0], size=label.shape[1:], mode='bilinear', align_corners=False)
+                out = torch.argmax(torch.softmax(net(input)[0], dim=1), dim=1).squeeze(0)
                 out = out.cpu().detach().numpy()
-                pred = zoom(
-                    out, (x / patch_size[0], y / patch_size[1]), order=0)
+                pred = zoom(out, (x / patch_size[0], y / patch_size[1]), order=0)
                 prediction[ind] = pred
     else:
         input = torch.from_numpy(image).unsqueeze(

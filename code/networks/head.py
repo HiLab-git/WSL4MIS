@@ -76,79 +76,91 @@ class SegFormerHead(BaseDecodeHead):
 
 
     def forward(self, inputs):
-        x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
-        c1, c2, c3, c4 = x
-        
+        c1, c2, c3, c4 = inputs # [bz,64,128,128], [bz,128,64,64], [bz,320,32,32], [bz,512,32,32]
 
         ############## MLP decoder on C1-C4 ###########
         n, _, h, w = c4.shape
 
         _c4 = self.linear_c4(c4).permute(0,2,1).reshape(n, -1, c4.shape[2], c4.shape[3])
-        _c4_class=_c4
-        _c4 = resize(_c4, size=c1.size()[2:],mode='bilinear',align_corners=False)
+        _c4 = F.interpolate(_c4, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
 
         _c3 = self.linear_c3(c3).permute(0,2,1).reshape(n, -1, c3.shape[2], c3.shape[3])
-        _c3_class=_c3
-        _c3 = resize(_c3, size=c1.size()[2:],mode='bilinear',align_corners=False)
+        _c3 = F.interpolate(_c3, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
 
         _c2 = self.linear_c2(c2).permute(0,2,1).reshape(n, -1, c2.shape[2], c2.shape[3])
-        _c2_class=_c2
-        _c2 = resize(_c2, size=c1.size()[2:],mode='bilinear',align_corners=False)
+        _c2 = F.interpolate(_c2, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
 
-        _c1 = self.linear_c1(c1).permute(0,2,1).reshape(n, -1, c1.shape[2], c1.shape[3])
-        _c1_class=_c1
+        _c1 = self.linear_c1(c1).permute(0,2,1).reshape(n, -1, c1.shape[2], c1.shape[3])  # [bz,256,128,128]
+
+        logit = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))  # [bz,256,128,128]
+
+        x = self.dropout(logit)
+        x = self.linear_pred(x)  # [bz,21,128,128]
+
+        x_16 = F.interpolate(x, size=[8,8],mode='bilinear',align_corners=False)  
+        x_32 = F.interpolate(x, size=[16,16],mode='bilinear',align_corners=False)  
+        x_64 = F.interpolate(x, size=[32,32],mode='bilinear',align_corners=False)  
+
+        return x, x_16, x_32, x_64
 
 
-        _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
-
-        # class_1234 = _c #self.linear_fuse(torch.cat([_c4_class, _c3_class, _c2_class, _c1_class], dim=1))    
-
-
-        x = self.dropout(_c)
-        x = self.linear_pred(x)
-
-        outs_class = []
-        batch_size = x.shape[0]
-        
-        for i in (range(0,self.num_classes)):
-            map_feature = self.conv0(x[:,i,...].unsqueeze(1))
-            class_1234 = self.leaky_relu(map_feature)
-            class_1234= self.dropout(class_1234)
-
-            class_1234 = self.conv1(class_1234)
-            class_1234= self.leaky_relu(class_1234)
-            class_1234 = self.dropout(class_1234)
-            class_1234 = self.avgpool(class_1234)
-            class_1234 = class_1234.view(batch_size,-1)
-            class_1234 = self.fc1(class_1234)
-            class_1234 = self.fc2(class_1234)            
-
-            outs_class.append(class_1234)
-
+        # x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
+        # c1, c2, c3, c4 = x
         
 
-        # outs_class_main = []
+        # ############## MLP decoder on C1-C4 ###########
+        # n, _, h, w = c4.shape
+
+        # _c4 = self.linear_c4(c4).permute(0,2,1).reshape(n, -1, c4.shape[2], c4.shape[3])
+        # _c4_class=_c4
+        # _c4 = resize(_c4, size=c1.size()[2:],mode='bilinear',align_corners=False)
+
+        # _c3 = self.linear_c3(c3).permute(0,2,1).reshape(n, -1, c3.shape[2], c3.shape[3])
+        # _c3_class=_c3
+        # _c3 = resize(_c3, size=c1.size()[2:],mode='bilinear',align_corners=False)
+
+        # _c2 = self.linear_c2(c2).permute(0,2,1).reshape(n, -1, c2.shape[2], c2.shape[3])
+        # _c2_class=_c2
+        # _c2 = resize(_c2, size=c1.size()[2:],mode='bilinear',align_corners=False)
+
+        # _c1 = self.linear_c1(c1).permute(0,2,1).reshape(n, -1, c1.shape[2], c1.shape[3])
+        # _c1_class=_c1
+
+
+        # _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
+
+        # # class_1234 = _c #self.linear_fuse(torch.cat([_c4_class, _c3_class, _c2_class, _c1_class], dim=1))    
+
+
+        # x = self.dropout(_c)
+        # x = self.linear_pred(x)
+
+        # outs_class = []
         # batch_size = x.shape[0]
-
-        # c2_ = self.pre_linear_pred(c2)
+        
         # for i in (range(0,self.num_classes)):
-        #     map_feature = self.conv0(c2_[:,i,...].unsqueeze(1))
+        #     map_feature = self.conv0(x[:,i,...].unsqueeze(1))
         #     class_1234 = self.leaky_relu(map_feature)
         #     class_1234= self.dropout(class_1234)
 
-        #     # class_1234 = self.conv1(class_1234)
-        #     # class_1234= self.leaky_relu(class_1234)
-        #     # class_1234 = self.dropout(class_1234)
-
+        #     class_1234 = self.conv1(class_1234)
+        #     class_1234= self.leaky_relu(class_1234)
+        #     class_1234 = self.dropout(class_1234)
         #     class_1234 = self.avgpool(class_1234)
         #     class_1234 = class_1234.view(batch_size,-1)
-        #     class_1234 = self.fc3(class_1234)
-        #     class_1234 = self.fc4(class_1234)            
+        #     class_1234 = self.fc1(class_1234)
+        #     class_1234 = self.fc2(class_1234)            
 
-        #     outs_class_main.append(class_1234)
+        #     outs_class.append(class_1234)
 
-        return x,outs_class
+
+        # return x,outs_class
     
+
+
+
+
+
 
 class class_Head(BaseDecodeHead):
 

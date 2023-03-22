@@ -62,21 +62,26 @@ class SwinUnet(nn.Module):
         #                         use_checkpoint=config.TRAIN.USE_CHECKPOINT)
         
         self.mix_transformer = MixVisionTransformer(img_size=config.DATA.IMG_SIZE,
-                                patch_size=config.MODEL.SWIN.PATCH_SIZE,
+                                patch_size=4,
                                 in_chans=config.MODEL.SWIN.IN_CHANS,
                                 num_classes=self.num_classes,
                                 embed_dims=[32, 64, 160, 256],
-                                depths=config.MODEL.SWIN.DEPTHS,
+                                depths=[2, 2, 2, 2],
                                 num_heads=[1, 2, 5, 8],                             
                                 mlp_ratios=[4, 4, 4, 4],
-                                qkv_bias=config.MODEL.SWIN.QKV_BIAS,
+                                qkv_bias=True,
                                 qk_scale=config.MODEL.SWIN.QK_SCALE,
                                 norm_layer=partial(nn.LayerNorm, eps=1e-6),
-                                drop_rate=config.MODEL.DROP_RATE,
-                                drop_path_rate=config.MODEL.DROP_PATH_RATE,
+                                drop_rate=0.0,
+                                drop_path_rate=0.1,
                                 stride=[4,2,2,1],
                             )
-        
+# class mit_b0(MixVisionTransformer):
+#     def __init__(self, stride=None, **kwargs):
+#         super(mit_b0, self).__init__(
+#             patch_size=4, embed_dims=[32, 64, 160, 256], num_heads=[1, 2, 5, 8], mlp_ratios=[4, 4, 4, 4],
+#             qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=[2, 2, 2, 2], sr_ratios=[8, 4, 2, 1],
+#             drop_rate=0.0, drop_path_rate=0.1, stride=stride)        
 
         self.seg_head=SegFormerHead(
                             # type='SegFormerHead',
@@ -102,7 +107,11 @@ class SwinUnet(nn.Module):
 
 
 
-        self.attn_proj = nn.Conv2d(in_channels=16, out_channels=1, kernel_size=1, bias=True)        
+
+
+
+
+        self.attn_proj = nn.Conv2d(in_channels=16, out_channels=4, kernel_size=1, bias=True)        
         nn.init.kaiming_normal_(self.attn_proj.weight, a=np.sqrt(5), mode="fan_out")    
 
         self.classifier = nn.Conv2d(in_channels=256, out_channels=self.num_classes-1, kernel_size=1, bias=False)    
@@ -122,26 +131,35 @@ class SwinUnet(nn.Module):
         
         logits = self.mix_transformer(x)
         _attns =logits[1]
-        attn_cat  = torch.cat(_attns[-2:], dim=1)#.detach()
-        attn_cat  = attn_cat + attn_cat.permute(0, 1, 3, 2)
-        attn_pred = self.attn_proj(attn_cat)
-        attn_pred = torch.sigmoid(attn_pred)#[:,0,...]
 
+        # attn_cat  = torch.cat(_attns[3], dim=1)#.detach()
+        # attn_cat  = attn_cat + attn_cat.permute(0, 1, 3, 2)
+        # _attns = self.attn_proj(attn_cat)
+        # _attns = torch.sigmoid(_attns)#[:,0,...]
 
-        # if logits[0].shape[0]>
+        attn_cat3 = torch.cat([_attns[3][0],_attns[3][1]] ,dim=1)#.detach()
+        attn_cat3 = attn_cat3 + attn_cat3.permute(0, 1, 3, 2)
+        attn_pred3 = self.attn_proj(attn_cat3)
+        attn_pred3 = torch.sigmoid(attn_pred3)[:,0,...]
 
         logits_=self.seg_head(logits[0])
-        
+
+
+
+
         logits_unethead=self.unet_decoder(logits[0])
 
-        calss=logits_[1]
-        out_seg=logits_[0]
-        out=F.interpolate(logits_unethead, size=x.shape[2:], mode='bilinear', align_corners=False)
-        out_seg = F.interpolate(input=out_seg,size=x.shape[2:], mode='bilinear',align_corners=False)
+        # calss=logits_[1]
+        # out_seg=logits_[0]
+
+        # out=F.interpolate(logits_unethead, size=x.shape[2:], mode='bilinear', align_corners=False)
+
+
+        logits_unethead = F.interpolate(input=logits_unethead,size=x.shape[2:], mode='bilinear',align_corners=False)
 
         # affinity_ = torch.softmax(torch.matmul(attn_pred, torch.softmax(out, dim=-1)),dim=-1)   
 
-        return out,calss,attn_pred,_attns
+        return logits_unethead,attn_pred3,logits[1],logits_
 
 
 

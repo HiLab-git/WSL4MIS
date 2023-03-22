@@ -350,7 +350,7 @@ class UNet_new(nn.Module):
                             decoder_params=dict(embed_dim=256),
                             loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0))
         
-        self.attn_proj = nn.Conv2d(in_channels=8, out_channels=1, kernel_size=1, bias=True)        
+        self.attn_proj = nn.Conv2d(in_channels=8, out_channels=4, kernel_size=1, bias=True)        
         nn.init.kaiming_normal_(self.attn_proj.weight, a=np.sqrt(5), mode="fan_out")    
 
    
@@ -367,13 +367,15 @@ class UNet_new(nn.Module):
         attn_cat  = attn_cat + attn_cat.permute(0, 1, 3, 2)
         attn_pred = self.attn_proj(attn_cat)
         attn_pred = torch.sigmoid(attn_pred)#[:,0,...]
-
-        logits_=self.seg_head(feature[4])
-        calss=logits_
+        # if feature[4].shape[-1]== 8:
+        #     logits_=0
+        # else:
+        #     logits_ =self.seg_head(feature[4])  
+        # calss=logits_
 
 
         output = self.decoder(feature)
-        return output,calss,attn_pred
+        return output,attn_pred
     
 
 

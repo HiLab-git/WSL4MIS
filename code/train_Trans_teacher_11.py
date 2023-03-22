@@ -17,7 +17,7 @@ from tensorboardX import SummaryWriter
 from torch.nn import BCEWithLogitsLoss
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data import DataLoader
-from torchvision import transforms
+from torchvision import transforms,ops
 from torchvision.utils import make_grid
 from tqdm import tqdm
 import datetime
@@ -45,14 +45,14 @@ parser.add_argument('--root_path', type=str,
 parser.add_argument('--exp', type=str,
                     default='ACDC_Semi/Mean_Teacher', help='experiment_name')
 parser.add_argument('--model', type=str,
-                    default='unet', help='model_name')
+                    default='unet_new', help='model_name')
 parser.add_argument('--fold', type=str,
                     default='fold1', help='cross validation')
 parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
                     default=30000, help='maximum epoch number to train')
-parser.add_argument('--batch_size', type=int, default=32,
+parser.add_argument('--batch_size', type=int, default=40,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
@@ -65,7 +65,7 @@ parser.add_argument('--num_classes', type=int,  default=4,
                     help='output channel of network')
 
 # label and unlabel
-parser.add_argument('--labeled_bs', type=int, default=16,
+parser.add_argument('--labeled_bs', type=int, default=20,
                     help='labeled_batch_size per gpu')
 parser.add_argument('--labeled_num', type=int, default=4,
                     help='labeled data')
@@ -111,11 +111,12 @@ parser.add_argument('--my_lambda', type=float,  default=1, help='balance factor 
 parser.add_argument('--tau', type=float,  default=1, help='temperature of the contrastive loss')
 
 parser.add_argument("--local_rank", default=os.getenv('LOCAL_RANK', 2), type=int)
+parser.add_argument("--kd_weights", type=int, default=15)
 
 args = parser.parse_args()
 config = get_config(args)
 # 
-device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:4' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -150,14 +151,13 @@ def train(args, snapshot_path):
                 param.detach_()
         return model
     
+
     model = create_model()
     ema_model = create_model(ema=True)
 
 
     model=model.to(device) 
     ema_model =ema_model.to(device)
-
-
 
     num_gpus = torch.cuda.device_count()
     
@@ -179,13 +179,14 @@ def train(args, snapshot_path):
                            num_workers=1)
 
     model.train()
-
-    optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
-    # optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=0.0001) 
+    optimizer = optim.Adam(model.parameters(), lr=base_lr, weight_decay=0.0001) 
 
     ce_loss = CrossEntropyLoss(ignore_index=4)
     dice_loss = losses.pDLoss(num_classes, ignore_index=4)
     cos_sim = CosineSimilarity(dim=1,eps=1e-6)
+    affinityenergyLoss=losses.SegformerAffinityEnergyLoss()
+    criterion = torch.nn.MSELoss()
+
 
     gatecrf_loss = ModelLossSemsegGatedCRF()
     loss_gatedcrf_kernels_desc = [{"weight": 1, "xy": 6, "rgb": 0.1}]
@@ -206,7 +207,10 @@ def train(args, snapshot_path):
 
             volume_batch, label_batch = sampled_batch_labeled['image'], sampled_batch_labeled['label']
             label_batch_wr = sampled_batch_labeled['random_walker']
+            crop_images = sampled_batch_labeled['crop_images']    
+            boxes = sampled_batch_labeled['boxes']
 
+            crop_images = crop_images.to(device)
             label_batch_wr = label_batch_wr.to(device)
             volume_batch, label_batch = volume_batch.to(device), label_batch.to(device)
             unlabeled_volume_batch = sampled_batch_unlabeled['image'].to(device)
@@ -216,124 +220,59 @@ def train(args, snapshot_path):
             ema_inputs = unlabeled_volume_batch + noise
             ema_inputs = torch.cat([volume_batch,ema_inputs],0)
 
-
             volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
 
-            outputs,calss,attpred,attpred_ = model(volume_batch)
 
-            outputs_soft = torch.softmax(outputs, dim=1)
+
+            outputs,attpred,att,out_feats= model(volume_batch) 
+            # outputs_unlabeled,_,_,_= model(unlabeled_volume_batch)  
+
             outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
-            
-
-
-
-            with torch.no_grad():
-                ema_output,ema_calss,ema_attpred ,ema_attpred_ = ema_model(ema_inputs)
-                ema_output_soft = torch.softmax(ema_output, dim=1)
-                
-            #     ema_output2,ema_calss2,ema_attpred  = ema_model2(ema_inputs2)
-            #     ema_output_soft2 = torch.softmax(ema_output2, dim=1)
-            # ema_output_soft=(ema_output_soft+ema_output_soft2)/2               
+            outputs_seg_soft = torch.softmax(outputs[:args.labeled_bs,...], dim=1)
 
             loss_ce = ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
-            loss_dice =ce_loss(outputs[:args.labeled_bs,...], label_batch[:].long())
 
 
-
-
-            # _,token_b4_n1, token_b4_n2 = attpred_[3][0].size()
-            bz, _, token_b4_n1, token_b4_n2 = attpred_[3].size()
-            attn_avg4 = torch.zeros(bz, token_b4_n1, token_b4_n2, dtype=outputs.dtype, device=outputs.device)
-            for attn in attpred_[3]:
-                attn = attn.mean(dim=0)
-                attn = attn / attn.sum(dim=-1,keepdim=True)
-                attn_avg4 += attn
-            attn_avg4 = attn_avg4 / len(attpred_[3]) 
-            attn_avg4=attn_avg4.unsqueeze(1)
-
-
-            pseudo_labels = torch.zeros_like(ema_output)
-
-            channel_map = ema_attpred
-            threshold = torch.quantile(channel_map, 0.95) # Set the threshold for each channel
-            binary_mask = (channel_map > threshold).float()
-            pseudo_labels= binary_mask * outputs  
-
-            pseudo_labels = torch.argmax(
-                pseudo_labels[:args.labeled_bs].detach(), dim=1, keepdim=False)
-            loss_ce_wr = ce_loss(outputs[:args.labeled_bs,...], label_batch_wr[:].long())
-            loss_dice_wr= dice_loss(outputs_soft[:args.labeled_bs,...], label_batch_wr.unsqueeze(1))
+            # loss_ce_wr = ce_loss(outputs, label_batch_wr[:].long())
+            # loss_dice_wr= dice_loss(outputs_seg_soft, label_batch_wr.unsqueeze(1))
             #dice_loss(outputs_soft[:args.labeled_bs,...], label_batch.unsqueeze(1))
             # supervised_loss = 0.5 * (loss_dice + loss_ce)
-            supervised_loss=loss_ce+loss_dice_wr+loss_ce_wr
-
-
-            #consistency loss
+            supervised_loss=loss_ce
+            # loss=loss_ce
+            with torch.no_grad():
+                ema_output,ema_attpred,_,_ = ema_model(ema_inputs)
+                
+                ema_outputs_unlabeled_soft = torch.softmax(ema_output[args.labeled_bs:,...], dim=1)
+                ema_outputs_seg_soft = torch.softmax(ema_output[:args.labeled_bs,...], dim=1)                
+                
+        #     #consistency loss
             consistency_weight = get_current_consistency_weight(iter_num // 300)
             if iter_num < 1000:
                 consistency_loss = 0.0
             else:
-                consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft[args.labeled_bs:,...]) ** 2)
-                
+                consistency_loss = torch.mean((outputs_unlabeled_soft - ema_outputs_unlabeled_soft) ** 2)
+        #     with torch.cuda.amp.autocast():
+        #         # -2: padded pixels;  -1: unlabeled pixels (其中60%-70%是没有标注信息的)
+            unlabeled_RoIs = (label_batch == 4)
+            unlabeled_RoIs=unlabeled_RoIs.type(torch.FloatTensor).to(device)
+            label_batch[label_batch < 0] = 0                    
+         #aff_loss
+            outs = []        
+            outs.append(out_feats[0][:args.labeled_bs,...])            
+            outs.append(out_feats[1][:args.labeled_bs,...])
+            outs.append(out_feats[2][:args.labeled_bs,...])
+            outs.append(out_feats[3][:args.labeled_bs,...])
+
+
+            affinityenergyloss = affinityenergyLoss(outs, att, unlabeled_RoIs,label_batch)
+            affinity_loss = losses.get_aff_loss(attpred[:args.labeled_bs,...],label_batch_wr)
+
+            loss = supervised_loss+affinityenergyloss*args.kd_weights+affinity_loss+consistency_weight*consistency_loss#+affinity_loss#+affinityenergyLoss*args.kd_weights
             
-            #aff_loss
-            aff_loss = losses.get_aff_loss(attpred[args.labeled_bs:,...],ema_attpred[args.labeled_bs:,...])
-
-            attn_avg4=F.interpolate(attn_avg4, size=outputs.shape[2:], mode='bilinear', align_corners=False)
-            affinity_loss_mat     = torch.abs(torch.softmax(torch.matmul(attn_avg4[:args.labeled_bs,...]
-                                                                   , outputs[:args.labeled_bs,...]),dim=-1) - outputs_soft[:args.labeled_bs,...])
-            affinity_loss=affinity_loss_mat.mean()  
-            # cosine similarity loss
-            create_center_1_bg = calss[0].unsqueeze(1)# 4,1,x,y,z->4,2
-            create_center_1_a =  calss[1].unsqueeze(1)
-            create_center_1_b =  calss[2].unsqueeze(1)
-            create_center_1_c =  calss[3].unsqueeze(1)
-
-
-
-            create_center_2_bg = ema_calss[0].unsqueeze(1)
-            create_center_2_a =  ema_calss[1].unsqueeze(1)
-            create_center_2_b =  ema_calss[2].unsqueeze(1)
-            create_center_2_c =  ema_calss[3].unsqueeze(1)
-            
-            create_center_soft_1_bg = F.softmax(create_center_1_bg, dim=1)# dims(4,2)
-            create_center_soft_1_a = F.softmax(create_center_1_a, dim=1)
-            create_center_soft_1_b = F.softmax(create_center_1_b, dim=1)
-            create_center_soft_1_c = F.softmax(create_center_1_c, dim=1)
-
-
-            create_center_soft_2_bg = F.softmax(create_center_2_bg, dim=1)# dims(4,2)
-            create_center_soft_2_a = F.softmax(create_center_2_a, dim=1)
-            create_center_soft_2_b = F.softmax(create_center_2_b, dim=1)            
-            create_center_soft_2_c = F.softmax(create_center_2_c, dim=1)
-
-
-            lb_center_12_bg = torch.cat((create_center_soft_1_bg[:args.labeled_bs,...], create_center_soft_2_bg[:args.labeled_bs,...]),dim=0)# 4,2
-            lb_center_12_a = torch.cat((create_center_soft_1_a[:args.labeled_bs,...], create_center_soft_2_a[:args.labeled_bs,...]),dim=0)
-            lb_center_12_b = torch.cat((create_center_soft_1_b[:args.labeled_bs,...], create_center_soft_2_b[:args.labeled_bs,...]),dim=0)            
-            lb_center_12_c = torch.cat((create_center_soft_1_c[:args.labeled_bs,...], create_center_soft_2_c[:args.labeled_bs,...]),dim=0)
-            
-
-            un_center_12_bg = torch.cat((create_center_soft_1_bg[args.labeled_bs:,...], create_center_soft_2_bg[args.labeled_bs:,...]),dim=0)
-            un_center_12_a = torch.cat((create_center_soft_1_a[args.labeled_bs:,...], create_center_soft_2_a[args.labeled_bs:,...]),dim=0)
-            un_center_12_b = torch.cat((create_center_soft_1_b[args.labeled_bs:,...], create_center_soft_2_b[args.labeled_bs:,...]),dim=0)        
-            un_center_12_c = torch.cat((create_center_soft_1_c[args.labeled_bs:,...], create_center_soft_2_c[args.labeled_bs:,...]),dim=0)        
-            
-
-
-
-            loss_contrast = losses.scc_loss(cos_sim, args.tau, lb_center_12_bg,
-                                            lb_center_12_a,un_center_12_bg, un_center_12_a,
-                                            lb_center_12_b,lb_center_12_c,un_center_12_b,un_center_12_c)
-
-            loss = supervised_loss+consistency_loss+loss_contrast*args.my_lambda+aff_loss+affinity_loss
             optimizer.zero_grad()
-
-            # loss.backward(retain_graph=True)
             loss.backward()
             optimizer.step()
             update_ema_variables(model, ema_model, args.ema_decay, iter_num)
-
 
             lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
             for param_group in optimizer.param_groups:
@@ -343,15 +282,13 @@ def train(args, snapshot_path):
             writer.add_scalar('info/lr', lr_, iter_num)
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
-            writer.add_scalar('info/loss_dice', loss_dice, iter_num)
-            writer.add_scalar('info/consistency_loss',
-                              consistency_loss, iter_num)
-            writer.add_scalar('info/consistency_weight',
-                              consistency_weight, iter_num)
+            writer.add_scalar('info/loss_dice', loss_ce, iter_num)
+            writer.add_scalar('info/consistency_loss',consistency_loss, iter_num)
+            writer.add_scalar('info/consistency_weight',consistency_weight, iter_num)
 
             logging.info(
                 'iteration %d : loss : %f, loss_ce: %f, loss_dice: %f' %
-                (iter_num, loss.item(), loss_ce.item(), loss_dice.item()))
+                (iter_num, loss.item(), loss_ce.item(), loss_ce.item()))
 
             if iter_num % 20 == 0:
                 image = volume_batch[1, 0:1, :, :]
@@ -422,11 +359,13 @@ def backup_code(base_dir):
     net_name1 = 'mix_transformer.py'  
     net_name2 = 'net_factory.py'  
     net_name3 = 'vision_transformer.py'
+    net_name4 = 'head.py'
+
     shutil.copy('networks/' + net_name1, code_path + '/' + net_name1)
     shutil.copy('networks/' + net_name2, code_path + '/' + net_name2)
     shutil.copy('networks/' + net_name3, code_path + '/' + net_name3)
+    shutil.copy('networks/' + net_name4, code_path + '/' + net_name4)
     shutil.copy('dataloaders/' + dataset_name, code_path + '/' + dataset_name)
-    # shutil.copy('dataloaders/' + dataset_name2, code_path + '/' + dataset_name2)
     shutil.copy(train_name, code_path + '/' + train_name)
 
 if __name__ == "__main__":
@@ -442,7 +381,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/tb/work_dirs/model/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model_/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     backup_code(snapshot_path)

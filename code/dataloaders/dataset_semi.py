@@ -42,7 +42,7 @@ class BaseDataSets(Dataset):
         self.labeled_type = labeled_type
         self.input_size = 256
         self.crop_size  = 128
-        self.patch_num=4
+        self.patch_num=1
         train_ids, test_ids = self._get_fold_ids(fold)
 
         all_labeled_ids = ["patient{:0>3}".format(10 * i) for i in range(1, 11)]

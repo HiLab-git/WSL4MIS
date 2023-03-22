@@ -357,3 +357,134 @@ def get_aff_loss(inputs, targets):
     neg_loss = torch.sum(neg_label * (inputs)) / neg_count
 
     return 0.5 * (pos_loss+pos_loss2+pos_loss3) + 0.5 * neg_loss
+
+
+class SegformerAffinityEnergyLoss(nn.Module):
+    def __init__(self, ):
+        super(SegformerAffinityEnergyLoss, self).__init__()
+
+
+        self.weight = 0.78
+        self.class_num = 4
+        self.loss_index = 3
+
+        #self.mst_layers = MinimumSpanningTree(TreeFilter2D.norm2_distance)
+        #self.tree_filter_layers = TreeFilter2D(groups=1, sigma=self.configer.get('tree_loss', 'sigma'))
+
+    # [bz,21,128,128], [bz,21,16,16], [bz,21,32,32], [bz,21,64,64], _attns- a list of 4
+    def forward(self, outputs, low_feats, unlabeled_ROIs, targets): 
+        seg, seg_16, seg_32, seg_64, = outputs
+        attns =low_feats
+        bz_label,_,_= targets.size()
+            
+        bz, _, token_b1_n1, token_b1_n2  = attns[0][0].size()
+        attn_avg1 = torch.zeros(bz_label, token_b1_n1, token_b1_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[0]:
+            attn = attn[:bz_label,...].mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg1 += attn
+        attn_avg1 = attn_avg1 / len(attns[0])
+        
+        # attn_avg2 [bz, 64*64, 16*16]
+        bz, _, token_b2_n1, token_b2_n2 = attns[1][0].size()
+        attn_avg2 = torch.zeros(bz_label, token_b2_n1, token_b2_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[1]:
+            attn = attn[:bz_label,...].mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg2 += attn
+        attn_avg2 = attn_avg2 / len(attns[1])
+
+        # attn_avg3 [bz, 32*32, 16*16]
+        bz, _, token_b3_n1, token_b3_n2 = attns[2][0].size()
+        attn_avg3 = torch.zeros(bz_label, token_b3_n1, token_b3_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[2]:
+            attn = attn[:bz_label,...].mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg3 += attn
+        attn_avg3 = attn_avg3 / len(attns[2]) 
+
+        # attn_avg4 [bz, 32*32, 32*32]
+        bz, _, token_b4_n1, token_b4_n2 = attns[3][0].size()
+        attn_avg4 = torch.zeros(bz_label, token_b4_n1, token_b4_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[3]:
+            attn = attn[:bz_label,...].mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg4 += attn
+        attn_avg4 = attn_avg4 / len(attns[3])     
+
+        # soft affinity probability 
+        _, _, h128,w128    = seg.size()
+        prob128            = torch.softmax(seg, dim=1)            # prob-[bz,21,128,128]
+        prob128            = prob128.view(bz_label,self.class_num,-1).permute(0,2,1)  # [bz, 128*128, 21]
+        prob128_softmax    = torch.softmax(prob128, dim=-1)
+
+        _, _, h16,w16      = seg_16.size()
+        prob16             = torch.softmax(seg_16, dim=1)           
+        prob16             = prob16.view(bz_label,self.class_num,-1).permute(0,2,1)  
+        prob16_softmax     = torch.softmax(prob16, dim=-1)
+
+        _, _, h32,w32      = seg_32.size()
+        prob32             = torch.softmax(seg_32, dim=1)            
+        prob32             = prob32.view(bz_label,self.class_num,-1).permute(0,2,1)  
+        prob32_softmax     = torch.softmax(prob32, dim=-1)
+
+        _, _, h64,w64      = seg_64.size()
+        prob64             = torch.softmax(seg_64, dim=1)            
+        prob64             = prob64.view(bz_label,self.class_num,-1).permute(0,2,1)  
+        prob64_softmax     = torch.softmax(prob64, dim=-1)
+
+        # loss
+        # affinity_loss1     = torch.abs(torch.matmul(attn_avg1, prob16) - prob128)  # [bz, 128*128, 21]
+        # affinity_loss2     = torch.abs(torch.matmul(attn_avg2, prob16) - prob64)
+        # affinity_loss3     = torch.abs(torch.matmul(attn_avg3, prob16) - prob32)
+        # affinity_loss4     = torch.abs(torch.matmul(attn_avg4, prob32) - prob32)
+
+        affinity_loss1     = torch.abs(torch.softmax(torch.matmul(attn_avg1, prob16),dim=-1) - prob128_softmax)  # [bz, 128*128, 21]
+        affinity_loss2     = torch.abs(torch.softmax(torch.matmul(attn_avg2, prob16),dim=-1) - prob64_softmax)
+        affinity_loss3     = torch.abs(torch.softmax(torch.matmul(attn_avg3, prob16),dim=-1) - prob32_softmax)
+        affinity_loss4     = torch.abs(torch.softmax(torch.matmul(attn_avg4, prob32),dim=-1) - prob32_softmax)
+
+        # affinity_loss1     = F.kl_div(F.log_softmax(torch.matmul(attn_avg1, prob16),dim=-1) , prob128_softmax)  # [bz, 128*128, 21]
+        # affinity_loss2     = F.kl_div(F.log_softmax(torch.matmul(attn_avg2, prob16),dim=-1) , prob64_softmax)
+        # affinity_loss3     = F.kl_div(F.log_softmax(torch.matmul(attn_avg3, prob16),dim=-1) , prob32_softmax)
+        # affinity_loss4     = F.kl_div(F.log_softmax(torch.matmul(attn_avg4, prob32),dim=-1) , prob32_softmax)
+
+        # affinity loss number
+        with torch.no_grad():
+            unlabeled_ROIs128 = F.interpolate(unlabeled_ROIs.unsqueeze(1), size=(h128, w128), mode='nearest')  # [bz, 1, 128, 128]
+            unlabeled_ROIs128 = unlabeled_ROIs128.view(bz_label, -1).unsqueeze(-1)
+            N128 = unlabeled_ROIs128.sum()
+
+            # unlabeled_ROIs16 = F.interpolate(unlabeled_ROIs.unsqueeze(1).float(), size=(h16, w16), mode='nearest')  # [bz, 1, 16, 16]
+            # unlabeled_ROIs16 = unlabeled_ROIs16.view(bz, -1).unsqueeze(-1)
+            # N16 = unlabeled_ROIs16.sum()
+
+            unlabeled_ROIs32 = F.interpolate(unlabeled_ROIs.unsqueeze(1), size=(h32, w32), mode='nearest')  # [bz, 1, 16, 16]
+            unlabeled_ROIs32 = unlabeled_ROIs32.view(bz_label, -1).unsqueeze(-1)
+            N32 = unlabeled_ROIs32.sum()
+
+            unlabeled_ROIs64 = F.interpolate(unlabeled_ROIs.unsqueeze(1), size=(h64, w64), mode='nearest')  # [bz, 1, 16, 16]
+            unlabeled_ROIs64 = unlabeled_ROIs64.view(bz_label, -1).unsqueeze(-1)
+            N64 = unlabeled_ROIs64.sum()
+
+        if N128>0:
+            affinity_loss1 = (unlabeled_ROIs128 * affinity_loss1).sum() / N128
+        if N64>0:
+            affinity_loss2 = (unlabeled_ROIs64 * affinity_loss2).sum() / N64
+        if N32>0:
+            affinity_loss3 = (unlabeled_ROIs32 * affinity_loss3).sum() / N32
+        if N32>0:
+            affinity_loss4 = (unlabeled_ROIs32 * affinity_loss4).sum() / N32
+        
+        if self.loss_index == 0:
+            affinity_loss = affinity_loss1
+        elif self.loss_index == 1:
+            affinity_loss = affinity_loss1 + affinity_loss2
+        elif self.loss_index == 2:
+            affinity_loss = affinity_loss1 + affinity_loss2 + affinity_loss3
+        elif self.loss_index == 3:
+            affinity_loss = affinity_loss1 + affinity_loss2 + affinity_loss3 + affinity_loss4
+        else:
+            affinity_loss = torch.zeros(1, dtype=seg.dtype, device=seg.device)
+        return affinity_loss
+
