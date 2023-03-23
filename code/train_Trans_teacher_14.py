@@ -31,15 +31,21 @@ from networks.vision_transformer import SwinUnet as ViT_seg
 from config import get_config
 from torch.nn import CosineSimilarity
 from torch.utils.data.distributed import DistributedSampler
+import math
+
+
 """选择GPU ID"""
 # gpu_list = [1,2] #[0,1]
 # gpu_list_str = ','.join(map(str, gpu_list))
 # os.environ.setdefault("CUDA_VISIBLE_DEVICES", gpu_list_str)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 from utils.gate_crf_loss import ModelLossSemsegGatedCRF
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--optim_name', type=str,default='adam', help='optimizer name')
+parser.add_argument('--lr_scheduler', type=str,default='warmupCosine', help='lr scheduler') 
+
 parser.add_argument('--root_path', type=str,
                     default='/mnt/sdd/tb/data/ACDC', help='Name of Experiment')
 parser.add_argument('--exp', type=str,
@@ -116,7 +122,7 @@ parser.add_argument("--kd_weights", type=int, default=15)
 args = parser.parse_args()
 config = get_config(args)
 # 
-device = torch.device('cuda:4' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:6' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -179,7 +185,35 @@ def train(args, snapshot_path):
                            num_workers=1)
 
     model.train()
-    optimizer = optim.Adam(model.parameters(), lr=base_lr, weight_decay=0.0001) 
+    # optimizer = optim.Adam(model.parameters(), lr=base_lr, weight_decay=0.0001) 
+    max_epoch = max_iterations // len(trainloader_labeled) + 1
+    warm_up_epochs = int(max_epoch * 0.1)
+    if args.optim_name=='adam':
+        optimizer = optim.Adam(model.parameters(), lr=base_lr, weight_decay=0.0001)
+    elif args.optim_name=='sgd':
+        optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9,weight_decay=0.0001)
+    elif args.optim_name=='adamW':
+        optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=0.0001)    
+    # elif args.optim_name=='Radam':
+    #     optimizer = optim2.RAdam(model.parameters(), lr=base_lr, weight_decay=0.0001)   
+        
+        # warm_up_with_multistep_lr
+    if args.lr_scheduler=='warmupMultistep':
+        lr1,lr2,lr3 = int(max_epoch*0.25) , int(max_epoch*0.4) , int(max_epoch*0.6)
+        lr_milestones = [lr1,lr2,lr3]
+        # lr1,lr2,lr3,lr4 = int(max_epoch*0.15) , int(max_epoch*0.35) , int(max_epoch*0.55) , int(max_epoch*0.7)
+        # lr_milestones = [lr1,lr2,lr3,lr4]
+        warm_up_with_multistep_lr = lambda epoch: (epoch+1) / warm_up_epochs if epoch < warm_up_epochs \
+                                                else 0.1**len([m for m in lr_milestones if m <= epoch])
+        scheduler_lr = optim.lr_scheduler.LambdaLR(optimizer,lr_lambda = warm_up_with_multistep_lr)
+    elif args.lr_scheduler=='warmupCosine':
+        # warm_up_with_cosine_lr
+        warm_up_with_cosine_lr = lambda epoch: (epoch+1) / warm_up_epochs if epoch < warm_up_epochs \
+                                else 0.5 * ( math.cos((epoch - warm_up_epochs) /(max_epoch - warm_up_epochs) * math.pi) + 1)
+        scheduler_lr = optim.lr_scheduler.LambdaLR(optimizer,lr_lambda = warm_up_with_cosine_lr)
+    elif args.lr_scheduler=='autoReduce':
+        scheduler_lr = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min',factor=0.5, patience=6, verbose=True, cooldown=2,min_lr=0)
+
 
     ce_loss = CrossEntropyLoss(ignore_index=4)
     dice_loss = losses.pDLoss(num_classes, ignore_index=4)
@@ -195,9 +229,9 @@ def train(args, snapshot_path):
 
     writer = SummaryWriter(snapshot_path + '/log')
     logging.info("{} iterations per epoch".format(len(trainloader_labeled)))
-
+    lr_curve = list()
     iter_num = 0
-    max_epoch = max_iterations // len(trainloader_labeled) + 1
+
     best_performance = 0.0
     iterator = tqdm(range(max_epoch), ncols=70)
     for epoch_num in iterator:
@@ -224,7 +258,7 @@ def train(args, snapshot_path):
 
 
 
-            outputs,attpred,att,out_feats= model(volume_batch) 
+            outputs,attpred,att,out_feats =model(volume_batch) 
             # outputs_unlabeled,_,_,_= model(unlabeled_volume_batch)  
 
             outputs_unlabeled_soft = torch.softmax(outputs[args.labeled_bs:,...], dim=1)
@@ -239,18 +273,23 @@ def train(args, snapshot_path):
             # supervised_loss = 0.5 * (loss_dice + loss_ce)
             supervised_loss=loss_ce + 0.5 * (loss_ce_wr + loss_dice_wr)
             # loss=loss_ce
-            with torch.no_grad():
-                ema_output,ema_attpred,_,_ = ema_model(ema_inputs)
+            # with torch.no_grad():
+            #     ema_output,ema_attpred,_,_,calss_ema = ema_model(ema_inputs)
                 
-                ema_outputs_unlabeled_soft = torch.softmax(ema_output[args.labeled_bs:,...], dim=1)
-                ema_outputs_seg_soft = torch.softmax(ema_output[:args.labeled_bs,...], dim=1)                
-                
+            #     ema_outputs_unlabeled_soft = torch.softmax(ema_output[args.labeled_bs:,...], dim=1)
+            #     ema_outputs_seg_soft = torch.softmax(ema_output[:args.labeled_bs,...], dim=1)  
+            # 
+            #               
+            out_seg_mlp=F.interpolate(out_feats[0], size=volume_batch.shape[2:], mode='bilinear', align_corners=False)                
         #     #consistency loss
+            consistency_loss  = torch.mean((outputs_unlabeled_soft - out_seg_mlp[args.labeled_bs:,...]) ** 2)        
             consistency_weight = get_current_consistency_weight(iter_num // 300)
-            if iter_num < 1000:
-                consistency_loss = 0.0
-            else:
-                consistency_loss = torch.mean((outputs_unlabeled_soft - ema_outputs_unlabeled_soft) ** 2)
+
+
+            # if iter_num < 1000:
+            #     consistency_loss = 0.0
+            # else:
+            #     consistency_loss = torch.mean((outputs_unlabeled_soft - ema_outputs_unlabeled_soft) ** 2)
         #     with torch.cuda.amp.autocast():
         #         # -2: padded pixels;  -1: unlabeled pixels (其中60%-70%是没有标注信息的)
             unlabeled_RoIs = (label_batch == 4)
@@ -267,19 +306,29 @@ def train(args, snapshot_path):
             affinityenergyloss = affinityenergyLoss(outs, att, unlabeled_RoIs,label_batch)
             affinity_loss = losses.get_aff_loss(attpred[:args.labeled_bs,...],label_batch_wr)
 
-            loss = 5*supervised_loss+affinityenergyloss*args.kd_weights+affinity_loss+consistency_weight*consistency_loss#+affinity_loss#+affinityenergyLoss*args.kd_weights
+
+            # cosine similarity loss
+
+
+
+            loss = 5*supervised_loss+affinityenergyloss*args.kd_weights+affinity_loss+consistency_weight*consistency_loss 
+            #+affinity_loss#+affinityenergyLoss*args.kd_weights
             
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             update_ema_variables(model, ema_model, args.ema_decay, iter_num)
+            # lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
+            # for param_group in optimizer.param_groups:
+            #     param_group['lr'] = lr_
+            ##更新学习率
+            scheduler_lr.step()
+            lr_iter = optimizer.param_groups[0]['lr']
+            lr_curve.append(lr_iter)
 
-            lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = lr_
 
             iter_num = iter_num + 1
-            writer.add_scalar('info/lr', lr_, iter_num)
+            writer.add_scalar('info/lr', lr_iter, iter_num)
             writer.add_scalar('info/total_loss', loss, iter_num)
             writer.add_scalar('info/loss_ce', loss_ce, iter_num)
             writer.add_scalar('info/loss_dice', loss_ce, iter_num)

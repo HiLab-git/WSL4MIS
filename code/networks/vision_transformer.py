@@ -22,7 +22,7 @@ from mmseg.ops import resize
 
 from networks.mix_transformer import MixVisionTransformer
 from functools import partial
-from networks.head import SegFormerHead,Unet_Decoder
+from networks.head import SegFormerHead,Unet_Decoder,class_Head
 from functools import partial
 import pickle
 # from networks.decode_head import Classification_head
@@ -106,7 +106,18 @@ class SwinUnet(nn.Module):
 
 
 
-
+        self.calss_head=class_Head(
+                            # type='SegFormerHead',
+                            in_channels=[32, 64, 160, 256],
+                            in_index=[0, 1, 2, 3],
+                            feature_strides=[4, 8, 16, 32],
+                            channels=128,
+                            dropout_ratio=0.1,
+                            num_classes=4,
+                            norm_cfg=norm_cfg,
+                            align_corners=False,
+                            decoder_params=dict(embed_dim=256),
+                            loss_decode=dict(type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0))
 
 
 
@@ -142,8 +153,8 @@ class SwinUnet(nn.Module):
         attn_pred3 = self.attn_proj(attn_cat3)
         attn_pred3 = torch.sigmoid(attn_pred3)[:,0,...]
 
-        logits_=self.seg_head(logits[0])
-
+        mlp_seg=self.seg_head(logits[0])
+        # calss=self.calss_head(logits[0][3])
 
 
 
@@ -159,7 +170,7 @@ class SwinUnet(nn.Module):
 
         # affinity_ = torch.softmax(torch.matmul(attn_pred, torch.softmax(out, dim=-1)),dim=-1)   
 
-        return logits_unethead,attn_pred3,logits[1],logits_
+        return logits_unethead,attn_pred3,_attns,mlp_seg#,calss
 
 
 

@@ -438,7 +438,9 @@ class SegformerAffinityEnergyLoss(nn.Module):
         # affinity_loss2     = torch.abs(torch.matmul(attn_avg2, prob16) - prob64)
         # affinity_loss3     = torch.abs(torch.matmul(attn_avg3, prob16) - prob32)
         # affinity_loss4     = torch.abs(torch.matmul(attn_avg4, prob32) - prob32)
-
+        pusdo_label=torch.softmax(torch.matmul(attn_avg1, prob16),dim=-1)
+        pusdo_label=pusdo_label.view(bz_label,self.class_num,h128,h128)
+        pusdo_label=F.interpolate(pusdo_label, size=targets.shape[1:], mode='bilinear', align_corners=False) 
         affinity_loss1     = torch.abs(torch.softmax(torch.matmul(attn_avg1, prob16),dim=-1) - prob128_softmax)  # [bz, 128*128, 21]
         affinity_loss2     = torch.abs(torch.softmax(torch.matmul(attn_avg2, prob16),dim=-1) - prob64_softmax)
         affinity_loss3     = torch.abs(torch.softmax(torch.matmul(attn_avg3, prob16),dim=-1) - prob32_softmax)
@@ -486,5 +488,5 @@ class SegformerAffinityEnergyLoss(nn.Module):
             affinity_loss = affinity_loss1 + affinity_loss2 + affinity_loss3 + affinity_loss4
         else:
             affinity_loss = torch.zeros(1, dtype=seg.dtype, device=seg.device)
-        return affinity_loss
+        return affinity_loss,pusdo_label
 
