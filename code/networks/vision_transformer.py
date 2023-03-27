@@ -136,7 +136,9 @@ class SwinUnet(nn.Module):
             x = x.repeat(1,3,1,1)
         # pickle.load = partial(pickle.load, encoding="latin1")
         # pickle.Unpickler = partial(pickle.Unpickler, encoding="latin1")
-        # state_dict = torch.load('/mnt/sdd/yd2tb/pretrained/'+'mit_b0'+'.pth', map_location=lambda storage, loc: storage, pickle_module=pickle)            
+        
+        
+        
         state_dict = torch.load('/mnt/sdd/tb/pretrained/'+'mit_b0'+'.pth')
         state_dict.pop('head.weight')
         state_dict.pop('head.bias')

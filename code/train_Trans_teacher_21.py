@@ -122,7 +122,7 @@ parser.add_argument("--kd_weights", type=int, default=0.8)
 args = parser.parse_args()
 config = get_config(args)
 # 
-device = torch.device('cuda:3' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -241,7 +241,7 @@ def train(args, snapshot_path):
 
             volume_batch, label_batch = sampled_batch_labeled['image'], sampled_batch_labeled['label']
             label_batch_wr = sampled_batch_labeled['random_walker']
-            crop_images = sampled_batch_labeled['crop_images']    
+            crop_images = sampled_batch_unlabeled['crop_images']    
             boxes = sampled_batch_labeled['boxes']
 
             crop_images = crop_images.to(device)
@@ -289,6 +289,7 @@ def train(args, snapshot_path):
             unlabeled_RoIs=unlabeled_RoIs.type(torch.FloatTensor).to(device)
     
 
+
             local_affinity_loss,pseudo_label = aff_2_pseudo_label(outputs,att, unlabeled_RoIs,label_batch)
             
             pseudo_label = torch.argmax(pseudo_label.detach(), dim=1, keepdim=False)
@@ -300,17 +301,22 @@ def train(args, snapshot_path):
 
             loss_dice_wr= dice_loss(outputs_seg_soft, pseudo_label[:args.labeled_bs,...].unsqueeze(1))
             
-            variance_main = torch.sum(kl_distance(torch.log(attpred[args.labeled_bs:]), 
-                                                  ema_attpred[args.labeled_bs:]), dim=1, keepdim=True)
-            exp_variance_main = torch.exp(-variance_main)
-            
-            consistency_dist_main = (
-                attpred[args.labeled_bs:] - ema_attpred[args.labeled_bs:]) ** 2
-            consistency_loss_main = torch.mean(
-                consistency_dist_main * exp_variance_main) / (torch.mean(exp_variance_main) + 1e-8) + torch.mean(variance_main)
             supervised_loss=loss_ce 
 
-            loss = 5*supervised_loss+ 0.5 * (loss_ce_wr + loss_dice_wr)+3*affinity_loss+local_affinity_loss*args.kd_weights+consistency_weight*consistency_loss+consistency_weight*consistency_loss_main #+loss_er
+            bs, bxs, c, h, w = crop_images.shape
+            crop_images = crop_images.reshape(bs * bxs, c, h, w)
+
+            
+            crop_out,_,_,_=ema_model(crop_images)
+            n, c, h, w = crop_out.shape
+            # roi align
+            feat_aligned = ops.roi_align(seg[args.labeled_bs:,...], boxes, (h, w), 1 / 8.0)
+            feat_aligned = F.softmax(feat_aligned, dim=1)
+            loss_kd = criterion(feat_aligned, crop_out) * args.kd_weights
+
+
+
+            loss = 5*supervised_loss+ 0.5 * (loss_ce_wr + loss_dice_wr)+3*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss+consistency_weight*consistency_loss_main #+loss_er
 
             optimizer.zero_grad()
             loss.backward()
@@ -430,10 +436,10 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/tb/work_dirs/model_/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model_tiaoshi/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    backup_code(snapshot_path)
+    # backup_code(snapshot_path)
 
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
