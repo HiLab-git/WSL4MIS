@@ -25,6 +25,8 @@ from functools import partial
 from networks.head import SegFormerHead,Unet_Decoder,class_Head
 from functools import partial
 import pickle
+from utils.util import FeatureDropout
+
 # from networks.decode_head import Classification_head
 # model settings
 norm_cfg = dict(type='BN', requires_grad=True)
@@ -122,14 +124,14 @@ class SwinUnet(nn.Module):
 
 
 
-        self.attn_proj = nn.Conv2d(in_channels=16, out_channels=4, kernel_size=1, bias=True)        
+        self.attn_proj = nn.Conv2d(in_channels=16, out_channels=1, kernel_size=1, bias=True)        
         nn.init.kaiming_normal_(self.attn_proj.weight, a=np.sqrt(5), mode="fan_out")    
 
         self.classifier = nn.Conv2d(in_channels=256, out_channels=self.num_classes-1, kernel_size=1, bias=False)    
 
 
                 
-    def forward(self, x):
+    def forward(self, x,aux=False):
         if x.size()[1] == 1:
             x = x.repeat(1,3,1,1)
         # pickle.load = partial(pickle.load, encoding="latin1")
@@ -141,6 +143,7 @@ class SwinUnet(nn.Module):
         self.mix_transformer.load_state_dict(state_dict,)
         
         logits = self.mix_transformer(x)
+
         _attns =logits[1]
 
         # attn_cat  = torch.cat(_attns[3], dim=1)#.detach()
@@ -153,24 +156,32 @@ class SwinUnet(nn.Module):
         attn_pred3 = self.attn_proj(attn_cat3)
         attn_pred3 = torch.sigmoid(attn_pred3)[:,0,...]
 
-        mlp_seg=self.seg_head(logits[0])
+
+
+
+
+
+        mlp_f=self.seg_head(logits[0])
         # calss=self.calss_head(logits[0][3])
+        if aux: 
+            return mlp_f ,attn_pred3,_attns
+        # aux3_feature = [FeatureDropout(i) for i in logits[0]]
+        else:
+            shape = x.shape[2:] 
+            dp0_out_seg,dp2_out_seg,dp3_out_seg=self.unet_decoder(logits[0],shape)
+            # mlp_seg_aux3=self.seg_head(aux3_feature)
+            
+            
+            
+            # mlp_seg = F.interpolate(input=mlp_seg,size=x.shape[2:], mode='bilinear',align_corners=False)    
+
+            
+                # logits_unethead=self.unet_decoder(logits[0],shape)
+            logits_unethead = F.interpolate(input=dp0_out_seg,size=x.shape[2:], mode='bilinear',align_corners=False)
 
 
 
-        logits_unethead=self.unet_decoder(logits[0])
-
-        # calss=logits_[1]
-        # out_seg=logits_[0]
-
-        # out=F.interpolate(logits_unethead, size=x.shape[2:], mode='bilinear', align_corners=False)
-
-
-        logits_unethead = F.interpolate(input=logits_unethead,size=x.shape[2:], mode='bilinear',align_corners=False)
-
-        # affinity_ = torch.softmax(torch.matmul(attn_pred, torch.softmax(out, dim=-1)),dim=-1)   
-
-        return logits_unethead,attn_pred3,_attns,mlp_seg#,calss
+            return logits_unethead,mlp_f,attn_pred3,_attns
 
 
 

@@ -64,8 +64,11 @@ def test_single_volume2(image, label, net, classes, device,patch_size=[256, 256]
             net.eval()
             with torch.no_grad():
                 # output=F.interpolate(net(input)[0], size=label.shape[1:], mode='bilinear', align_corners=False)
-                out = torch.argmax(torch.softmax(net(input)[0], dim=1), dim=1).squeeze(0)
+                out=net(input)[0]
+                # out=F.interpolate(out, size=patch_size, mode='bilinear', align_corners=False)
+                out = torch.argmax(torch.softmax(out, dim=1), dim=1).squeeze(0)
                 out = out.cpu().detach().numpy()
+                
                 pred = zoom(out, (x / patch_size[0], y / patch_size[1]), order=0)
                 prediction[ind] = pred
     else:
@@ -73,9 +76,10 @@ def test_single_volume2(image, label, net, classes, device,patch_size=[256, 256]
             0).unsqueeze(0).float().to(device)
         net.eval()
         with torch.no_grad():
-            out = torch.argmax(torch.softmax(
-                net(input)[0], dim=1), dim=1).squeeze(0)
+            out = torch.argmax(torch.softmax(net(input)[0], dim=1), dim=1).squeeze(0)
+            out=F.interpolate(out, size=label.shape[1:], mode='bilinear', align_corners=False)
             prediction = out.cpu().detach().numpy()
+                        
     metric_list = []
     for i in range(1, classes):
         metric_list.append(calculate_metric_percase(

@@ -6,7 +6,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from functools import partial
-
+from torch.distributions.uniform import Uniform
+import numpy as np
 
 class MLP(nn.Module):
     """
@@ -84,11 +85,11 @@ class SegFormerHead(BaseDecodeHead):
         _c4 = self.linear_c4(c4).permute(0,2,1).reshape(n, -1, c4.shape[2], c4.shape[3])
         _c4 = F.interpolate(_c4, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
 
-        _c3 = self.linear_c3(c3).permute(0,2,1).reshape(n, -1, c3.shape[2], c3.shape[3])
-        _c3 = F.interpolate(_c3, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
+        _c3_ = self.linear_c3(c3).permute(0,2,1).reshape(n, -1, c3.shape[2], c3.shape[3])
+        _c3 = F.interpolate(_c3_, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
 
-        _c2 = self.linear_c2(c2).permute(0,2,1).reshape(n, -1, c2.shape[2], c2.shape[3])
-        _c2 = F.interpolate(_c2, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
+        _c2_ = self.linear_c2(c2).permute(0,2,1).reshape(n, -1, c2.shape[2], c2.shape[3])
+        _c2 = F.interpolate(_c2_, size=c1.size()[2:],mode='bilinear',align_corners=False)  # [bz,256,128,128]
 
         _c1 = self.linear_c1(c1).permute(0,2,1).reshape(n, -1, c1.shape[2], c1.shape[3])  # [bz,256,128,128]
 
@@ -103,59 +104,9 @@ class SegFormerHead(BaseDecodeHead):
 
         return x, x_16, x_32, x_64
 
-
-        # x = self._transform_inputs(inputs)  # len=4, 1/4,1/8,1/16,1/32
-        # c1, c2, c3, c4 = x
-        
-
-        # ############## MLP decoder on C1-C4 ###########
-        # n, _, h, w = c4.shape
-
-        # _c4 = self.linear_c4(c4).permute(0,2,1).reshape(n, -1, c4.shape[2], c4.shape[3])
-        # _c4_class=_c4
-        # _c4 = resize(_c4, size=c1.size()[2:],mode='bilinear',align_corners=False)
-
-        # _c3 = self.linear_c3(c3).permute(0,2,1).reshape(n, -1, c3.shape[2], c3.shape[3])
-        # _c3_class=_c3
-        # _c3 = resize(_c3, size=c1.size()[2:],mode='bilinear',align_corners=False)
-
-        # _c2 = self.linear_c2(c2).permute(0,2,1).reshape(n, -1, c2.shape[2], c2.shape[3])
-        # _c2_class=_c2
-        # _c2 = resize(_c2, size=c1.size()[2:],mode='bilinear',align_corners=False)
-
-        # _c1 = self.linear_c1(c1).permute(0,2,1).reshape(n, -1, c1.shape[2], c1.shape[3])
-        # _c1_class=_c1
-
-
-        # _c = self.linear_fuse(torch.cat([_c4, _c3, _c2, _c1], dim=1))
-
-        # # class_1234 = _c #self.linear_fuse(torch.cat([_c4_class, _c3_class, _c2_class, _c1_class], dim=1))    
-
-
-        # x = self.dropout(_c)
-        # x = self.linear_pred(x)
-
-        # outs_class = []
-        # batch_size = x.shape[0]
-        
-        # for i in (range(0,self.num_classes)):
-        #     map_feature = self.conv0(x[:,i,...].unsqueeze(1))
-        #     class_1234 = self.leaky_relu(map_feature)
-        #     class_1234= self.dropout(class_1234)
-
-        #     class_1234 = self.conv1(class_1234)
-        #     class_1234= self.leaky_relu(class_1234)
-        #     class_1234 = self.dropout(class_1234)
-        #     class_1234 = self.avgpool(class_1234)
-        #     class_1234 = class_1234.view(batch_size,-1)
-        #     class_1234 = self.fc1(class_1234)
-        #     class_1234 = self.fc2(class_1234)            
-
-        #     outs_class.append(class_1234)
-
-
-        # return x,outs_class
-    
+        # _c3_ = self.linear_pred(_c3_)
+        # _c2_ = self.linear_pred(_c2_)
+        # return x,x_16,_c3_,_c2_
 
 
 
@@ -331,19 +282,84 @@ class Unet_Decoder(nn.Module):
 
         self.out_conv = nn.Conv2d(self.ft_chns[0], self.n_class,kernel_size=3, padding=1)
 
+        # self.out_conv_dp4 = nn.Conv2d(self.ft_chns[4], self.n_class,kernel_size=3, padding=1)
+        # self.out_conv_dp3 = nn.Conv2d(self.ft_chns[3], self.n_class,kernel_size=3, padding=1)
+        self.out_conv_dp2 = nn.Conv2d(self.ft_chns[2], self.n_class,kernel_size=3, padding=1)
+        self.out_conv_dp3 = nn.Conv2d(self.ft_chns[1], self.n_class,kernel_size=3, padding=1)
+        self.feature_noise = FeatureNoise()
+
+
         self.out_conv_x23= nn.Conv2d(self.ft_chns[3]*2, self.ft_chns[3],kernel_size=1, padding=1)
 
-    def forward(self, feature):
+    def forward(self, feature,shape):
         x0 = feature[0]
         x1 = feature[1]
         x2 = feature[2]
         x = feature[3]
-        # x4 = feature[4]
-        # x= torch.cat([x3,x2],1)
-        # x=self.out_conv_x23(x)
-        # x = self.up1(x4, x3)
+
+
+
         x = self.up2(x, x2)
+        if self.training:
+            dp2_out_seg = self.out_conv_dp2(Dropout(x, p=0.5))
+        else:
+            dp2_out_seg = self.out_conv_dp2(x)
+        # dp2_out_seg = torch.nn.functional.interpolate(dp2_out_seg, shape)
+
         x = self.up3(x, x1)
+        if self.training:
+            dp3_out_seg = self.out_conv_dp3(FeatureDropout(x))
+        else:
+            dp3_out_seg = self.out_conv_dp3(x)
+        # dp3_out_seg = torch.nn.functional.interpolate(dp3_out_seg, shape)
+
         x = self.up4(x, x0)
-        output = self.out_conv(x)
-        return output
+        dp0_out_seg = self.out_conv(x)
+
+
+
+
+
+        
+        return dp0_out_seg, dp2_out_seg, dp3_out_seg
+
+
+        # x = self.up2(x, x2)
+        # x = self.up3(x, x1)
+        # x = self.up4(x, x0)
+        # output = self.out_conv(x)
+        # return output
+
+
+
+
+def Dropout(x, p=0.3):
+    x = torch.nn.functional.dropout(x, p)
+    return x
+
+
+def FeatureDropout(x):
+    attention = torch.mean(x, dim=1, keepdim=True)
+    max_val, _ = torch.max(attention.view(
+        x.size(0), -1), dim=1, keepdim=True)
+    threshold = max_val * np.random.uniform(0.7, 0.9)
+    threshold = threshold.view(x.size(0), 1, 1, 1).expand_as(attention)
+    drop_mask = (attention < threshold).float()
+    x = x.mul(drop_mask)
+    return x
+
+
+class FeatureNoise(nn.Module):
+    def __init__(self, uniform_range=0.3):
+        super(FeatureNoise, self).__init__()
+        self.uni_dist = Uniform(-uniform_range, uniform_range)
+
+    def feature_based_noise(self, x):
+        noise_vector = self.uni_dist.sample(
+            x.shape[1:]).to(x.device).unsqueeze(0)
+        x_noise = x.mul(noise_vector) + x
+        return x_noise
+
+    def forward(self, x):
+        x = self.feature_based_noise(x)
+        return x

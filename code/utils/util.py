@@ -5,7 +5,7 @@ from scipy.ndimage import distance_transform_edt as distance
 from skimage import segmentation as skimage_seg
 import torch
 from torch.utils.data.sampler import Sampler
-
+import torch.nn.functional as F
 import networks
 
 def load_model(path):
@@ -142,3 +142,35 @@ def compute_sdf(img_gt, out_shape):
             # assert np.max(sdf) ==  1.0, print(np.min(posdis), np.min(negdis), np.max(posdis), np.max(negdis))
 
     return normalized_sdf
+
+
+
+def cams_to_refine_label(cam_label,  ignore_index=255):
+    
+    b,h,w = cam_label.shape
+
+    cam_label_resized = F.interpolate(cam_label.unsqueeze(1).type(torch.float32), size=[h//16, w//16], mode="nearest")
+
+    _cam_label = cam_label_resized.reshape(b, 1, -1)
+    _cam_label_rep = _cam_label.repeat([1, _cam_label.shape[-1], 1])
+    _cam_label_rep_t = _cam_label_rep.permute(0,2,1)
+    ref_label = (_cam_label_rep == _cam_label_rep_t).type(torch.long)
+    #ref_label[(_cam_label_rep+_cam_label_rep_t) == 0] = ignore_index
+    # for i in range(b):
+
+    #     ref_label[i, :, _cam_label_rep[i, 0, :]==ignore_index] = ignore_index
+    #     ref_label[i, _cam_label_rep[i, 0, :]==ignore_index, :] = ignore_index
+
+    return ref_label
+
+
+
+def FeatureDropout(x):
+    attention = torch.mean(x, dim=1, keepdim=True)
+    max_val, _ = torch.max(attention.view(
+        x.size(0), -1), dim=1, keepdim=True)
+    threshold = max_val * np.random.uniform(0.7, 0.9)
+    threshold = threshold.view(x.size(0), 1, 1, 1).expand_as(attention)
+    drop_mask = (attention < threshold).float()
+    x = x.mul(drop_mask)
+    return x
