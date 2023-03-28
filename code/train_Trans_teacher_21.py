@@ -62,7 +62,7 @@ parser.add_argument('--batch_size', type=int, default=32,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
-parser.add_argument('--base_lr', type=float,  default=0.01,
+parser.add_argument('--base_lr', type=float,  default=0.005,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
@@ -305,10 +305,16 @@ def train(args, snapshot_path):
 
             bs, bxs, c, h, w = crop_images.shape
             crop_images = crop_images.reshape(bs * bxs, c, h, w)
+            box_ind = torch.cat([torch.zeros(4).fill_(i) for i in range(bs)])
+            boxes = boxes.reshape(bs * bxs, 5)
+            # boxes[:, 0] = box_ind
 
+
+            boxes = boxes.cuda(non_blocking=True).type_as(seg)
             
             crop_out,_,_,_=ema_model(crop_images)
             n, c, h, w = crop_out.shape
+                     
             # roi align
             feat_aligned = ops.roi_align(seg[args.labeled_bs:,...], boxes, (h, w), 1 / 8.0)
             feat_aligned = F.softmax(feat_aligned, dim=1)
@@ -316,7 +322,7 @@ def train(args, snapshot_path):
 
 
 
-            loss = 5*supervised_loss+ 0.5 * (loss_ce_wr + loss_dice_wr)+3*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss+consistency_weight*consistency_loss_main #+loss_er
+            loss = loss_kd+5*supervised_loss+ 0.5 * (loss_ce_wr + loss_dice_wr)+3*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss #+loss_er
 
             optimizer.zero_grad()
             loss.backward()
@@ -436,10 +442,10 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/tb/work_dirs/model_tiaoshi/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model_/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    # backup_code(snapshot_path)
+    backup_code(snapshot_path)
 
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
