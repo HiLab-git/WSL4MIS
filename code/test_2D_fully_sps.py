@@ -2,7 +2,7 @@ import argparse
 import os
 import re
 import shutil
-
+import logging
 import h5py
 import nibabel as nib
 import numpy as np
@@ -12,6 +12,7 @@ from medpy import metric
 from scipy.ndimage import zoom
 from scipy.ndimage.interpolation import zoom
 from tqdm import tqdm
+import sys
 
 # from networks.efficientunet import UNet
 from networks.net_factory import net_factory
@@ -77,7 +78,10 @@ def calculate_metric_percase(pred, gt, spacing):
     dice = metric.binary.dc(pred, gt)
     asd = metric.binary.asd(pred, gt, voxelspacing=spacing)
     hd95 = metric.binary.hd95(pred, gt, voxelspacing=spacing)
-    return dice, hd95, asd
+    assd = metric.binary.assd(pred, gt, voxelspacing=spacing)
+    sensitivity=metric.binary.sensitivity(pred, gt)     
+
+    return dice, hd95, asd,assd,sensitivity
 
 
 def test_single_volume(case, net, test_save_path, FLAGS):
@@ -114,15 +118,15 @@ def test_single_volume(case, net, test_save_path, FLAGS):
     third_metric = calculate_metric_percase(
         prediction == 3, label == 3, (spacing[2], spacing[0], spacing[1]))
 
-    img_itk = sitk.GetImageFromArray(image.astype(np.float32))
-    img_itk.CopyInformation(org_img_itk)
-    prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
-    prd_itk.CopyInformation(org_img_itk)
-    lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
-    lab_itk.CopyInformation(org_img_itk)
-    sitk.WriteImage(prd_itk, test_save_path + case + "_pred.nii.gz")
-    sitk.WriteImage(img_itk, test_save_path + case + "_img.nii.gz")
-    sitk.WriteImage(lab_itk, test_save_path + case + "_gt.nii.gz")
+    # img_itk = sitk.GetImageFromArray(image.astype(np.float32))
+    # img_itk.CopyInformation(org_img_itk)
+    # prd_itk = sitk.GetImageFromArray(prediction.astype(np.float32))
+    # prd_itk.CopyInformation(org_img_itk)
+    # lab_itk = sitk.GetImageFromArray(label.astype(np.float32))
+    # lab_itk.CopyInformation(org_img_itk)
+    # sitk.WriteImage(prd_itk, test_save_path + case + "_pred.nii.gz")
+    # sitk.WriteImage(img_itk, test_save_path + case + "_img.nii.gz")
+    # sitk.WriteImage(lab_itk, test_save_path + case + "_gt.nii.gz")
     return first_metric, second_metric, third_metric
 
 
@@ -139,23 +143,26 @@ def Inference(FLAGS):
         FLAGS.exp, FLAGS.fold, FLAGS.sup_type)
     test_save_path = "../model/{}_{}/{}/{}_predictions/".format(
         FLAGS.exp, FLAGS.fold, FLAGS.sup_type, FLAGS.model)
+    logging.basicConfig(filename=test_save_path + "/log.txt", level=logging.INFO,
+                        format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
+    logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))    
+
     if os.path.exists(test_save_path):
         shutil.rmtree(test_save_path)
     os.makedirs(test_save_path)
     net = net_factory(net_type=FLAGS.model, in_chns=1,
                       class_num=FLAGS.num_classes)
-    save_mode_path = os.path.join(
-        snapshot_path, 'iter_60000.pth')
+    save_mode_path = os.path.join(snapshot_path, 'iter_60000.pth')
 
     net.load_state_dict(torch.load(save_mode_path))
-    print("init weight from {}".format(save_mode_path))
+    logging.info("init weight from {}".format(save_mode_path))
     net.eval()
 
     first_total = 0.0
     second_total = 0.0
     third_total = 0.0
     for case in tqdm(image_list):
-        print(case)
+        logging.info(case)
         first_metric, second_metric, third_metric = test_single_volume(
             case, net, test_save_path, FLAGS)
         first_total += np.asarray(first_metric)
@@ -163,18 +170,20 @@ def Inference(FLAGS):
         third_total += np.asarray(third_metric)
     avg_metric = [first_total / len(image_list), second_total /
                   len(image_list), third_total / len(image_list)]
-    print(avg_metric)
-    print((avg_metric[0] + avg_metric[1] + avg_metric[2]) / 3)
+    logging.info(avg_metric)
+    logging.info((avg_metric[0] + avg_metric[1] + avg_metric[2]) / 3)
     return ((avg_metric[0] + avg_metric[1] + avg_metric[2]) / 3)[0]
 
 
 if __name__ == '__main__':
     FLAGS = parser.parse_args()
+
+
     total = 0.0
     for i in [1, 2, 3, 4, 5]:
         # for i in [5]:
         FLAGS.fold = "fold{}".format(i)
-        print("Inference fold{}".format(i))
+        logging.info("Inference fold{}".format(i))
         mean_dice = Inference(FLAGS)
         total += mean_dice
-    print(total/5.0)
+    logging.info(total/5.0)

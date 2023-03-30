@@ -53,7 +53,7 @@ parser.add_argument('--exp', type=str,
 parser.add_argument('--model', type=str,
                     default='unet_new', help='model_name')
 parser.add_argument('--fold', type=str,
-                    default='fold2', help='cross validation')
+                    default='fold1', help='cross validation')
 parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
@@ -323,7 +323,7 @@ def train(args, snapshot_path):
 
 
 
-            loss = loss_kd+5*supervised_loss+ 0.5 * (loss_ce_wr + loss_dice_wr)+3*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss #+loss_er
+            loss = loss_kd+5*supervised_loss+3*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss #+loss_er
 
             optimizer.zero_grad()
             loss.backward()
@@ -443,7 +443,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/tb/work_dirs/model_ours/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model_ours_ab/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     backup_code(snapshot_path)
