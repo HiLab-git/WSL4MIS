@@ -148,12 +148,12 @@ class BaseDataSets(Dataset):
             label[label==200]=2
             label[label==500]=3
             label[label==600]=1
-
+            image=image.astype(np.float32)
+            label=label.astype(np.uint8)
             # x, y = image.shape[1],image.shape[2]
             # image = zoom(image, (self.input_size[0] / x, self.input_size[1] / y), order=0)
             # label = zoom(label, (self.input_size[0] / x, self.input_size[1] / y), order=0)
-            image=image.astype(np.float32)
-            label=label.astype(np.uint8)
+
             sample = {'image': image, 'label': label}
         sample["idx"] = case.split("_")[0]
         return sample
