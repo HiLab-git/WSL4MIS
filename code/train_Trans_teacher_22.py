@@ -6,7 +6,7 @@ import shutil
 import sys
 import time
 from itertools import cycle
-
+os.environ["CUDA_VISIBLE_DEVICES"]="6" 
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
@@ -53,7 +53,7 @@ parser.add_argument('--exp', type=str,
 parser.add_argument('--model', type=str,
                     default='unet_new', help='model_name')
 parser.add_argument('--fold', type=str,
-                    default='fold1', help='cross validation')
+                    default='fold5', help='cross validation')
 parser.add_argument('--sup_type', type=str,
                     default='scribble', help='supervision type')
 parser.add_argument('--max_iterations', type=int,
@@ -62,7 +62,7 @@ parser.add_argument('--batch_size', type=int, default=32,
                     help='batch_size per gpu')
 parser.add_argument('--deterministic', type=int,  default=1,
                     help='whether use deterministic training')
-parser.add_argument('--base_lr', type=float,  default=0.005,
+parser.add_argument('--base_lr', type=float,  default=0.03,
                     help='segmentation network learning rate')
 parser.add_argument('--patch_size', type=list,  default=[256, 256],
                     help='patch size of network input')
@@ -122,7 +122,7 @@ parser.add_argument("--kd_weights", type=int, default=0.8)
 args = parser.parse_args()
 config = get_config(args)
 # 
-# device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_current_consistency_weight(epoch):
     # Consistency ramp-up from https://arxiv.org/abs/1610.02242
@@ -161,12 +161,14 @@ def train(args, snapshot_path):
     model = create_model()
     ema_model = create_model(ema=True)
 
+    
 
     model=model.to(device) 
     ema_model =ema_model.to(device)
-
-    num_gpus = torch.cuda.device_count()
     
+    num_gpus = torch.cuda.device_count()
+
+    # model = nn.DataParallel(model)    
     db_train_labeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="labeled", fold=args.fold, split="train", transform=transforms.Compose([
         RandomGenerator(args.patch_size)]),sup_type=args.sup_type)
     db_train_unlabeled = BaseDataSets(base_dir=args.root_path, num=8, labeled_type="unlabeled", fold=args.fold, split="train", transform=transforms.Compose([
@@ -242,24 +244,28 @@ def train(args, snapshot_path):
             volume_batch, label_batch = sampled_batch_labeled['image'], sampled_batch_labeled['label']
             label_batch_wr = sampled_batch_labeled['random_walker']
             crop_images = sampled_batch_unlabeled['crop_images']    
-            boxes = sampled_batch_labeled['boxes']
+            boxes = sampled_batch_unlabeled['boxes']
 
             crop_images = crop_images.to(device)
             label_batch_wr = label_batch_wr.to(device)
             volume_batch, label_batch = volume_batch.to(device), label_batch.to(device)
             unlabeled_volume_batch = sampled_batch_unlabeled['image'].to(device)
+
+
             noise = torch.clamp(torch.randn_like(unlabeled_volume_batch) * 0.1, -0.2, 0.2)
             ema_inputs = unlabeled_volume_batch + noise
+            noise_crop = torch.clamp(torch.randn_like(crop_images) * 0.3, -0.5, 0.5)
+            crop_images = crop_images+noise_crop
+
+
             ema_inputs = torch.cat([volume_batch,ema_inputs],0)
             volume_batch=torch.cat([volume_batch,unlabeled_volume_batch],0)
-
-
 
 
             seg,outputs,attpred,att =model(volume_batch,aux=False) 
 
             outputs_unlabeled_soft = torch.softmax(seg[args.labeled_bs:,...], dim=1)
-            outputs_seg_soft = torch.softmax(seg[:args.labeled_bs,...], dim=1)
+            outputs_seg_soft = torch.softmax(seg, dim=1)
 
 
             #TODO: pCE loss
@@ -267,33 +273,30 @@ def train(args, snapshot_path):
             
             #TODO: Equivariant Regularization Loss
             # scale_factor=0.3
-            # img2 = F.interpolate(volume_batch, scale_factor=scale_factor, mode='bilinear', align_corners=True)
-            # mlp_f,attn_pred3,_attns = model(img2[args.labeled_bs:,...],aux=True) 
+            # img2 = F.interpolate(volume_batch, scale_factor=scale_factor, mode='bilinear', align_corners=True,recompute_scale_factor=True)
+            # mlp_f,attn_pred3,_attns = model(img2,aux=True) 
 
-            # attn_pred1 = F.interpolate(attpred[args.labeled_bs:,...].unsqueeze(1), scale_factor=scale_factor, mode='bilinear', align_corners=True)            
-            # attn_pred3 = F.interpolate(attn_pred3.unsqueeze(1), size=img2.shape[2:], mode='bilinear', align_corners=True)
+            # attn_pred1 = F.interpolate(attpred[args.labeled_bs:,...].unsqueeze(1), scale_factor=scale_factor, mode='bilinear', align_corners=True,recompute_scale_factor=True)            
+            # attn_pred3 = F.interpolate(attn_pred3[args.labeled_bs:,...].unsqueeze(1), size=img2.shape[2:], mode='bilinear', align_corners=True)
             # loss_er = torch.mean((attn_pred3 - attn_pred1) ** 2)
 
             with torch.no_grad():
                 ema_seg,ema_output,ema_attpred,ema_att = ema_model(ema_inputs)
-                ema_output_soft = torch.softmax(ema_seg[args.labeled_bs:,...], dim=1)
+                ema_output_soft = torch.softmax(ema_seg, dim=1)
                 
             #consistency loss
             consistency_weight = get_current_consistency_weight(iter_num // 150)
             # if iter_num < 200:
             #     consistency_loss = 0.0
             # else:
-            consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft) ** 2)
+            consistency_loss = torch.mean((outputs_unlabeled_soft - ema_output_soft[args.labeled_bs:,...]) ** 2)
 
             unlabeled_RoIs = (label_batch == 0)
             unlabeled_RoIs=unlabeled_RoIs.type(torch.FloatTensor).to(device)
 
 
 
-            local_affinity_loss,pseudo_label = aff_2_pseudo_label(outputs,att, unlabeled_RoIs,label_batch,ema_att)
-
-
-
+            local_affinity_loss,pseudo_label = aff_2_pseudo_label(outputs,att, unlabeled_RoIs,label_batch,ema_att,max_iterations,iter_num)
             pseudo_label = torch.argmax(pseudo_label.detach(), dim=1, keepdim=False)
             ref_label = cams_to_refine_label(pseudo_label[:args.labeled_bs,...],  ignore_index=4)
 
@@ -301,7 +304,7 @@ def train(args, snapshot_path):
 
             loss_ce_wr = ce_loss(seg[:args.labeled_bs,...], pseudo_label[:args.labeled_bs,...][:].long())
 
-            loss_dice_wr= dice_loss(outputs_seg_soft, pseudo_label[:args.labeled_bs,...].unsqueeze(1))
+            loss_dice_wr= dice_loss(outputs_seg_soft[:args.labeled_bs,...], pseudo_label[:args.labeled_bs,...].unsqueeze(1))
             
             supervised_loss=loss_ce + 0.5 * (loss_ce_wr + loss_dice_wr)
         
@@ -323,9 +326,9 @@ def train(args, snapshot_path):
             feat_aligned = F.softmax(feat_aligned, dim=1)
             loss_kd = criterion(feat_aligned, crop_out) * args.kd_weights
 
+            # loss_kd+
 
-
-            loss = loss_kd+5*supervised_loss+3*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss #+loss_er
+            loss = consistency_weight*loss_kd+8*supervised_loss+5*affinity_loss+local_affinity_loss+consistency_weight*consistency_loss + 0.5 * (loss_ce_wr + loss_dice_wr) #+loss_er
 
             optimizer.zero_grad()
             loss.backward()
@@ -445,7 +448,7 @@ if __name__ == "__main__":
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
 
-    snapshot_path = "/mnt/sdd/tb/work_dirs/model_ours/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
+    snapshot_path = "/mnt/sdd/tb/work_dirs/model_ours_tiaoshi/{}_{}/{}-{}".format(args.exp, args.fold, args.sup_type,datetime.datetime.now())
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
     # backup_code(snapshot_path)
@@ -454,54 +457,54 @@ if __name__ == "__main__":
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
-    # train(args, snapshot_path)
+    train(args, snapshot_path)
 
 
-    num_classes=4    
+#     num_classes=4    
 
-    save_best_model='/mnt/sdd/tb/work_dirs/model_ours/ACDC_Semi/Mean_Teacher_fold1/scribble-2023-03-28 16:21:28.002836/iter_24800_dice_0.8175.pth'
-    logging.info('============= Start  Test ==============')
-    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
-    model = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes) 
-    # model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
-    model.load_state_dict(torch.load(save_best_model))
-    print("init weight from {}".format(save_best_model))
-    model.eval()
+#     save_best_model='/mnt/sdd/tb/work_dirs/model_ours/ACDC_Semi/Mean_Teacher_fold1/scribble-2023-03-28 16:21:28.002836/iter_24800_dice_0.8175.pth'
+#     logging.info('============= Start  Test ==============')
+#     device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+#     model = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes) 
+#     # model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
+#     model.load_state_dict(torch.load(save_best_model))
+#     print("init weight from {}".format(save_best_model))
+#     model.eval()
  
-    db_val = BaseDataSets(base_dir=args.root_path,fold=args.fold, split="val", )
-    valloader = DataLoader(db_val, batch_size=1, shuffle=False,num_workers=1)
+#     db_val = BaseDataSets(base_dir=args.root_path,fold=args.fold, split="val", )
+#     valloader = DataLoader(db_val, batch_size=1, shuffle=False,num_workers=1)
 
 
-    logging.info("{} iterations per epoch".format(len(valloader)))
-    model=model.to(device) 
-    metric_list = 0.0
-    for i_batch, sampled_batch in enumerate(valloader):
-        metric_i = test_single_volume_7(
-            sampled_batch["image"], sampled_batch["label"], model, classes=num_classes,device=device)
-        metric_list += np.array(metric_i)
-        print("metric_list:",metric_list)
-    metric_list = metric_list / len(db_val)
+#     logging.info("{} iterations per epoch".format(len(valloader)))
+#     model=model.to(device) 
+#     metric_list = 0.0
+#     for i_batch, sampled_batch in enumerate(valloader):
+#         metric_i = test_single_volume_7(
+#             sampled_batch["image"], sampled_batch["label"], model, classes=num_classes,device=device)
+#         metric_list += np.array(metric_i)
+#         print("metric_list:",metric_list)
+#     metric_list = metric_list / len(db_val)
 
 
-    performance_test = np.mean(metric_list, axis=0)[0]
-    mean_hd95_test = np.mean(metric_list, axis=0)[1]
-    ppv  = np.mean(metric_list, axis=0)[2]
-    sen = np.mean(metric_list, axis=0)[3]
-    iou = np.mean(metric_list, axis=0)[4]
-    biou = np.mean(metric_list, axis=0)[5]
-    asd = np.mean(metric_list, axis=0)[7]  
+#     performance_test = np.mean(metric_list, axis=0)[0]
+#     mean_hd95_test = np.mean(metric_list, axis=0)[1]
+#     ppv  = np.mean(metric_list, axis=0)[2]
+#     sen = np.mean(metric_list, axis=0)[3]
+#     iou = np.mean(metric_list, axis=0)[4]
+#     biou = np.mean(metric_list, axis=0)[5]
+#     asd = np.mean(metric_list, axis=0)[7]  
 
 
-#     # dice, hd95,sen,iou,asd
-# #dice, hd95, ppv, sen, iou, boundary_iou, hd
+# #     # dice, hd95,sen,iou,asd
+# # #dice, hd95, ppv, sen, iou, boundary_iou, hd
 
-    logging.info("Mean dice     on all patients:{:.4f} ".format(performance_test))
-    logging.info("Mean hd95     on all patients:{:.4f} ".format(mean_hd95_test))
-    logging.info("Mean IOU      on all patients:{:.4f} ".format(iou))
-    logging.info("Mean PPV      on all patients:{:.4f} ".format(ppv))
-    logging.info("Mean SEN      on all patients:{:.4f} ".format(sen))
-    logging.info("Mean biou      on all patients:{:.4f} ".format(biou))
-    logging.info("Mean asd      on all patients:{:.4f} ".format(asd))
+#     logging.info("Mean dice     on all patients:{:.4f} ".format(performance_test))
+#     logging.info("Mean hd95     on all patients:{:.4f} ".format(mean_hd95_test))
+#     logging.info("Mean IOU      on all patients:{:.4f} ".format(iou))
+#     logging.info("Mean PPV      on all patients:{:.4f} ".format(ppv))
+#     logging.info("Mean SEN      on all patients:{:.4f} ".format(sen))
+#     logging.info("Mean biou      on all patients:{:.4f} ".format(biou))
+#     logging.info("Mean asd      on all patients:{:.4f} ".format(asd))
         
-    os.rename(snapshot_path,snapshot_path+"_DSC_"+str(performance_test)[2:6]+"_SEN_"+str(sen)[2:6]+"_DH95_"+str(mean_hd95_test)[0:6]+"_IOU_"+str(iou)[0:6])
+#     os.rename(snapshot_path,snapshot_path+"_DSC_"+str(performance_test)[2:6]+"_SEN_"+str(sen)[2:6]+"_DH95_"+str(mean_hd95_test)[0:6]+"_IOU_"+str(iou)[0:6])
 

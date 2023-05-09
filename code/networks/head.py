@@ -274,11 +274,11 @@ class Unet_Decoder(nn.Module):
         # self.up1 = UpBlock(
         #     self.ft_chns[4], self.ft_chns[3], self.ft_chns[3], dropout_p=0.0)
         self.up2 = UpBlock1(
-            self.ft_chns[3], self.ft_chns[2], self.ft_chns[2], dropout_p=0.0)
+            self.ft_chns[3], self.ft_chns[2], self.ft_chns[2], dropout_p=0.2)
         self.up3 = UpBlock(
-            self.ft_chns[2], self.ft_chns[1], self.ft_chns[1], dropout_p=0.0)
+            self.ft_chns[2], self.ft_chns[1], self.ft_chns[1], dropout_p=0.4)
         self.up4 = UpBlock(
-            self.ft_chns[1], self.ft_chns[0], self.ft_chns[0], dropout_p=0.0)
+            self.ft_chns[1], self.ft_chns[0], self.ft_chns[0], dropout_p=0.5)
 
         self.out_conv = nn.Conv2d(self.ft_chns[0], self.n_class,kernel_size=3, padding=1)
 

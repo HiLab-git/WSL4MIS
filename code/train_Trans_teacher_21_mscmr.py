@@ -26,7 +26,7 @@ from dataloaders.dataset_semi_mscmr import (BaseDataSets, RandomGenerator,TwoStr
 from networks.discriminator import FCDiscriminator
 from networks.net_factory import net_factory
 from utils import losses, metrics, ramps,util
-from val_2D import test_single_volume2
+from val_2D import test_single_volume2,test_single_volume_7
 from networks.vision_transformer import SwinUnet as ViT_seg
 from config import get_config
 from torch.nn import CosineSimilarity
@@ -455,10 +455,58 @@ if __name__ == "__main__":
     snapshot_path =os.path.join(snapshot_path, "{}/{}-{}".format(args.exp,args.sup_type,datetime.datetime.now()))
     if not os.path.exists(snapshot_path):
         os.makedirs(snapshot_path)
-    backup_code(snapshot_path)
+    # backup_code(snapshot_path)
 
     logging.basicConfig(filename=snapshot_path + "/log.txt", level=logging.INFO,
                         format='[%(asctime)s.%(msecs)03d] %(message)s', datefmt='%H:%M:%S')
     logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
     logging.info(str(args))
-    train(args, snapshot_path)
+    # train(args, snapshot_path)
+
+
+    num_classes=4    
+
+    save_best_model='/mnt/sdd/tb/work_dirs/model_ours/MSCMR_Semi/Mean_Teacher/scribble-2023-04-04 10:59:13.249873/iter_15800_dice_0.7385.pth'
+    logging.info('============= Start  Test ==============')
+    device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
+    model = ViT_seg(config, img_size=args.patch_size,num_classes=args.num_classes) 
+    # model = net_factory(net_type=args.model, in_chns=1,class_num=num_classes)
+    model.load_state_dict(torch.load(save_best_model))
+    print("init weight from {}".format(save_best_model))
+    model.eval()
+ 
+    db_val = BaseDataSets(base_dir=args.root_path,split="val")
+    valloader = DataLoader(db_val, batch_size=1, shuffle=False,num_workers=1)
+
+
+    logging.info("{} iterations per epoch".format(len(valloader)))
+    model=model.to(device) 
+    metric_list = 0.0
+    for i_batch, sampled_batch in enumerate(valloader):
+        metric_i = test_single_volume_7(sampled_batch["image"], sampled_batch["label"], model, classes=num_classes,device=device)
+        metric_list += np.array(metric_i)
+        print("metric_list:",metric_list)
+    metric_list = metric_list / len(db_val)
+
+
+    performance_test = np.mean(metric_list, axis=0)[0]
+    mean_hd95_test = np.mean(metric_list, axis=0)[1]
+    ppv  = np.mean(metric_list, axis=0)[2]
+    sen = np.mean(metric_list, axis=0)[3]
+    iou = np.mean(metric_list, axis=0)[4]
+    biou = np.mean(metric_list, axis=0)[5]
+    asd = np.mean(metric_list, axis=0)[7]  
+
+
+#     # dice, hd95,sen,iou,asd
+# #dice, hd95, ppv, sen, iou, boundary_iou, hd
+
+    logging.info("Mean dice     on all patients:{:.4f} ".format(performance_test))
+    logging.info("Mean hd95     on all patients:{:.4f} ".format(mean_hd95_test))
+    logging.info("Mean IOU      on all patients:{:.4f} ".format(iou))
+    logging.info("Mean PPV      on all patients:{:.4f} ".format(ppv))
+    logging.info("Mean SEN      on all patients:{:.4f} ".format(sen))
+    logging.info("Mean biou      on all patients:{:.4f} ".format(biou))
+    logging.info("Mean asd      on all patients:{:.4f} ".format(asd))
+        
+    os.rename(snapshot_path,snapshot_path+'_label_ratio_'+str(args.label_ratio)+"_DSC_"+str(performance_test)[2:6]+"_SEN_"+str(sen)[2:6]+"_DH95_"+str(mean_hd95_test)[0:6]+"_IOU_"+str(iou)[0:6])

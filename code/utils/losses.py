@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from torch.autograd import Variable
 from torch.nn import functional as F
-
+from utils import losses, metrics, ramps,util
 
 def dice_loss(score, target):
     target = target.float()
@@ -382,12 +382,15 @@ class SegformerAffinityEnergyLoss(nn.Module):
         #self.tree_filter_layers = TreeFilter2D(groups=1, sigma=self.configer.get('tree_loss', 'sigma'))
 
     # [bz,21,128,128], [bz,21,16,16], [bz,21,32,32], [bz,21,64,64], _attns- a list of 4
-    def forward(self, outputs, low_feats, unlabeled_ROIs, targets): 
+    def forward(self, outputs, low_feats, unlabeled_ROIs, targets,ema_att,max_iterations,iter_num): 
+
+       
         seg, seg_16, seg_32, seg_64, = outputs
         attns =low_feats
         bz_label,_,_= targets.size()
             
         bz, _, token_b1_n1, token_b1_n2  = attns[0][0].size()
+
         attn_avg1 = torch.zeros(bz, token_b1_n1, token_b1_n2, dtype=seg.dtype, device=seg.device)
         for attn in attns[0]:
             attn = attn.mean(dim=1)
@@ -422,6 +425,46 @@ class SegformerAffinityEnergyLoss(nn.Module):
             attn_avg4 += attn
         attn_avg4 = attn_avg4 / len(attns[3])     
 
+        #TODO: uncertrainty
+        # bz_ema, _, token_b1_n1, token_b1_n2  = ema_att[0][0].size()
+
+        attn_avg1_ema = torch.zeros(bz, token_b1_n1, token_b1_n2, dtype=seg.dtype, device=seg.device)
+        for attn in ema_att[0]:
+            attn = attn.mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg1_ema += attn
+        attn_avg1_ema = attn_avg1_ema / len(attns[0])
+        
+        # attn_avg2 [bz, 64*64, 16*16]
+        # bz, _, token_b2_n1, token_b2_n2 = attns[1][0].size()
+        attn_avg2_ema = torch.zeros(bz, token_b2_n1, token_b2_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[1]:
+            attn = attn.mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg2_ema += attn
+        attn_avg2_ema = attn_avg2_ema / len(attns[1])
+
+        # attn_avg3 [bz, 32*32, 16*16]
+        # bz, _, token_b3_n1, token_b3_n2 = attns[2][0].size()
+        attn_avg3_ema = torch.zeros(bz, token_b3_n1, token_b3_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[2]:
+            attn = attn.mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg3_ema += attn
+        attn_avg3_ema = attn_avg3_ema / len(attns[2]) 
+
+        # attn_avg4 [bz, 32*32, 32*32]
+        # bz, _, token_b4_n1, token_b4_n2 = attns[3][0].size()
+        attn_avg4_ema = torch.zeros(bz, token_b4_n1, token_b4_n2, dtype=seg.dtype, device=seg.device)
+        for attn in attns[3]:
+            attn = attn.mean(dim=1)
+            attn = attn / attn.sum(dim=-1,keepdim=True)
+            attn_avg4_ema += attn
+        attn_avg4_ema = attn_avg4_ema / len(attns[3])     
+
+
+
+
         # soft affinity probability 
         _, _, h128,w128    = seg.size()
         prob128            = torch.softmax(seg, dim=1)            # prob-[bz,21,128,128]
@@ -443,30 +486,74 @@ class SegformerAffinityEnergyLoss(nn.Module):
         prob64             = prob64.view(bz,self.class_num,-1).permute(0,2,1)  
         prob64_softmax     = torch.softmax(prob64, dim=-1)
 
+
+
+        # attn_avg1_ema= F.interpolate(attn_avg1_ema, size=targets.shape[1:], mode='bilinear', align_corners=False)
+        # attn_avg2_ema= F.interpolate(attn_avg2_ema, size=targets.shape[1:], mode='bilinear', align_corners=False)
+        # attn_avg3_ema= F.interpolate(attn_avg3_ema, size=targets.shape[1:], mode='bilinear', align_corners=False)
+        # attn_avg1_ema= F.interpolate(attn_avg4_ema, size=targets.shape[1:], mode='bilinear', align_corners=False)
+
+        # attn_avg_ema = torch.mean(torch.stack([F.softmax(attn_avg1_ema, dim=1), F.softmax(attn_avg2_ema, dim=1)]), dim=0)
+
+        threshold = (0.75 + 0.25 * ramps.sigmoid_rampup(iter_num, max_iterations)) * np.log(2)
+
+        uncertainty1 = -1.0 * torch.sum(attn_avg1_ema.permute(0,2,1) * torch.log(attn_avg1_ema.permute(0,2,1) + 1e-6), dim=1, keepdim=True)
+        uncertainty_mask1 = (uncertainty1 > threshold)
+        # pusdo_att = torch.argmax(F.softmax(pusdo_label, dim=1).detach(), dim=1, keepdim=True).float()    
+        certainty_att1 = attn_avg1.permute(0,2,1).clone()
+        uncertainty_mask1 = uncertainty_mask1.repeat(1,64,1)
+        certainty_att1[uncertainty_mask1] = 0
+        
+
+        uncertainty2 = -1.0 * torch.sum(attn_avg2_ema.permute(0,2,1) * torch.log(attn_avg2_ema.permute(0,2,1) + 1e-6), dim=1, keepdim=True)
+        uncertainty_mask2 = (uncertainty2 > threshold)
+        # pusdo_att = torch.argmax(F.softmax(pusdo_label, dim=1).detach(), dim=1, keepdim=True).float()    
+        certainty_att2 = attn_avg2.permute(0,2,1).clone()
+        uncertainty_mask2 = uncertainty_mask2.repeat(1,64,1)
+        certainty_att2[uncertainty_mask2] = 0
+        
+        
+        uncertainty3 = -1.0 * torch.sum(attn_avg3_ema.permute(0,2,1) * torch.log(attn_avg3_ema.permute(0,2,1) + 1e-6), dim=1, keepdim=True)
+        
+
+        uncertainty_mask3 = (uncertainty3 > threshold)
+        # pusdo_att = torch.argmax(F.softmax(pusdo_label, dim=1).detach(), dim=1, keepdim=True).float()    
+        certainty_att3 = attn_avg3.permute(0,2,1).clone()
+        
+        uncertainty_mask3 = uncertainty_mask3.repeat(1,64,1)
+        certainty_att3[uncertainty_mask3] = 0
+
+
+        uncertainty4 = -1.0 * torch.sum(attn_avg4_ema.permute(0,2,1) * torch.log(attn_avg4_ema.permute(0,2,1) + 1e-6), dim=1, keepdim=True)
+        uncertainty_mask4 = (uncertainty4 > threshold)
+        # pusdo_att = torch.argmax(F.softmax(pusdo_label, dim=1).detach(), dim=1, keepdim=True).float()    
+        certainty_att4 = attn_avg4.permute(0,2,1).clone()
+        
+        uncertainty_mask4 = uncertainty_mask4.repeat(1,256,1)
+        certainty_att4[uncertainty_mask4] = 0
+
+
         # loss
         # affinity_loss1     = torch.abs(torch.matmul(attn_avg1, prob16) - prob128)  # [bz, 128*128, 21]
         # affinity_loss2     = torch.abs(torch.matmul(attn_avg2, prob16) - prob64)
         # affinity_loss3     = torch.abs(torch.matmul(attn_avg3, prob16) - prob32)
         # affinity_loss4     = torch.abs(torch.matmul(attn_avg4, prob32) - prob32)
-        pusdo_label1= torch.softmax(torch.matmul(attn_avg1, prob16),dim=-1)
+        pusdo_label1= torch.softmax(torch.matmul(certainty_att1.permute(0,2,1), prob16),dim=-1)
         pusdo_label1= pusdo_label1.view(bz,self.class_num,h128,w128)
         pusdo_label1= F.interpolate(pusdo_label1, size=targets.shape[1:], mode='bilinear', align_corners=False)
 
-        pusdo_label2=torch.softmax(torch.matmul(attn_avg2, prob16),dim=-1)
+        pusdo_label2=torch.softmax(torch.matmul(certainty_att2.permute(0,2,1), prob16),dim=-1)
         pusdo_label2= pusdo_label2.view(bz,self.class_num,h64,w64)
         pusdo_label2= F.interpolate(pusdo_label2, size=targets.shape[1:], mode='bilinear', align_corners=False)
         # return pusdo_label
-        pusdo_label3=torch.softmax(torch.matmul(attn_avg3, prob16),dim=-1)
+        pusdo_label3=torch.softmax(torch.matmul(certainty_att3.permute(0,2,1), prob16),dim=-1)
         pusdo_label3= pusdo_label3.view(bz,self.class_num,h32,w32)
         pusdo_label3= F.interpolate(pusdo_label3, size=targets.shape[1:], mode='bilinear', align_corners=False)
 
-        pusdo_label4=torch.softmax(torch.matmul(attn_avg4, prob32),dim=-1)
+        pusdo_label4=torch.softmax(torch.matmul(certainty_att4.permute(0,2,1), prob32),dim=-1)
         pusdo_label4= pusdo_label4.view(bz,self.class_num,h32,w32)
         pusdo_label4= F.interpolate(pusdo_label4, size=targets.shape[1:], mode='bilinear', align_corners=False)
         pusdo_label=(pusdo_label1+pusdo_label2+pusdo_label3+pusdo_label4)/4
-
-
-
 
         affinity_loss1     = torch.abs(torch.softmax(torch.matmul(attn_avg1[:bz_label,...], 
                                                                   prob16[:bz_label,...]),dim=-1) - prob128_softmax[:bz_label,...])  # [bz, 128*128, 21]
@@ -488,9 +575,9 @@ class SegformerAffinityEnergyLoss(nn.Module):
             unlabeled_ROIs128 = unlabeled_ROIs128.view(bz_label, -1).unsqueeze(-1)
             N128 = unlabeled_ROIs128.sum()
 
-            # unlabeled_ROIs16 = F.interpolate(unlabeled_ROIs.unsqueeze(1).float(), size=(h16, w16), mode='nearest')  # [bz, 1, 16, 16]
-            # unlabeled_ROIs16 = unlabeled_ROIs16.view(bz, -1).unsqueeze(-1)
-            # N16 = unlabeled_ROIs16.sum()
+            unlabeled_ROIs16 = F.interpolate(unlabeled_ROIs.unsqueeze(1).float(), size=(h16, w16), mode='nearest')  # [bz, 1, 16, 16]
+            unlabeled_ROIs16 = unlabeled_ROIs16.view(bz, -1).unsqueeze(-1)
+            N16 = unlabeled_ROIs16.sum()
 
             unlabeled_ROIs32 = F.interpolate(unlabeled_ROIs.unsqueeze(1), size=(h32, w32), mode='nearest')  # [bz, 1, 16, 16]
             unlabeled_ROIs32 = unlabeled_ROIs32.view(bz_label, -1).unsqueeze(-1)
@@ -519,5 +606,5 @@ class SegformerAffinityEnergyLoss(nn.Module):
             affinity_loss = affinity_loss1 + affinity_loss2 + affinity_loss3 + affinity_loss4
         else:
             affinity_loss = torch.zeros(1, dtype=seg.dtype, device=seg.device)
-        return affinity_loss1,pusdo_label
+        return affinity_loss,pusdo_label
 
