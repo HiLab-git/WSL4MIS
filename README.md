@@ -81,6 +81,7 @@ python test_2D_fully_sps.py --sup_type scribble --exp ACDC/the trained model fol
 * [**pCE + MumfordShah_Loss**](https://arxiv.org/pdf/1904.02872.pdf)
 * [**Scribble2Label**](https://arxiv.org/pdf/2006.12890.pdf)
 * [**USTM**](https://www.sciencedirect.com/science/article/pii/S0031320321005215)
+* [**ScribbleVC**](https://github.com/HUANGLIZI/ScribbleVC)
 
 # Acknowledgement
 * The GatedCRFLoss is adapted from [GatedCRFLoss](https://github.com/LEONOB2014/GatedCRFLoss) for medical image segmentation.
