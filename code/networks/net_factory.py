@@ -1,4 +1,4 @@
-from networks.efficientunet import Effi_UNet
+# from networks.efficientunet import Effi_UNet
 # from networks.enet import ENet
 from networks.pnet import PNet2D
 from networks.unet import UNet, UNet_DS, UNet_CCT
@@ -84,9 +84,9 @@ def net_factory(net_type="unet", in_chns=1, class_num=3):
         net = UNet_new(in_chns=in_chns, class_num=class_num)
     # elif net_type == "unet_urpc":
     #     net = UNet_URPC(in_chns=in_chns, class_num=class_num).cuda()
-    elif net_type == "efficient_unet":
-        net = Effi_UNet('efficientnet-b3', encoder_weights='imagenet',
-                        in_channels=in_chns, classes=class_num)
+    # elif net_type == "efficient_unet":
+    #     net = Effi_UNet('efficientnet-b3', encoder_weights='imagenet',
+    #                     in_channels=in_chns, classes=class_num)
     elif net_type == "ViT_Seg":
         net = ViT_seg(config, img_size=args.patch_size,
                       num_classes=args.num_classes)
