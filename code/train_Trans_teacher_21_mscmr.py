@@ -46,7 +46,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--optim_name', type=str,default='adam', help='optimizer name')
 parser.add_argument('--lr_scheduler', type=str,default='warmupCosine', help='lr scheduler') 
 
-parser.add_argument('--snapshot_path', type=str,default='/mnt/sdd/tb/work_dirs/model_ours', help='Name of results')
+parser.add_argument('--snapshot_path', type=str,default='/mnt/sdc/tianbiao/model_ours', help='Name of results')
 parser.add_argument('--label_ratio', type=float, default=0.1,help='label data') 
 
 parser.add_argument('--root_path', type=str,
@@ -90,7 +90,7 @@ parser.add_argument('--consistency_rampup', type=float,
 
 #trans parameters
 parser.add_argument(
-    '--cfg', type=str, default="/mnt/sdd/tb/WSL4MIS/code/configs/swin_tiny_patch4_window7_224_lite.yaml", help='path to config file', )
+    '--cfg', type=str, default="/mnt/sdc/tianbiao/WSL4MIS/code/configs/swin_tiny_patch4_window7_224_lite.yaml", help='path to config file', )
 parser.add_argument(
     "--opts",
     help="Modify config options by adding 'KEY VALUE' pairs. ",
